@@ -1,0 +1,93 @@
+---
+title: "PA_PVP: Adversarial Peer Validation Protocol"
+sidebarTitle: "Introduction"
+description: "PA_PVP is a copy/paste AI decision protocol that forces a verdict on every uncertain plan, artifact, or choice — and gives you one concrete next action."
+---
+
+PA_PVP is a text protocol, not a software package. You load it into any AI system by providing the canonical `.txt` file as a system prompt or context window — no installation, no API keys, no runtime environment required. Once loaded, the AI applies a deterministic decision kernel to whatever situation you describe. The kernel never returns "it depends." It evaluates your input, weighs benefit against cost and risk, exposes the highest-impact weakness, and forces a closed verdict: **DO NOW**, **DO LATER**, or **DISCARD**. The output is a machine-readable state block you can paste directly into the next run, plus a human-readable table for quick scanning.
+
+## Core design philosophy
+
+Doubt is a state transition, not a blocker. When uncertainty is present, PA_PVP converts it into one of four concrete outcomes: a probe to reduce it, a parked state while waiting for evidence, a bounded simulation labeled as such, or a discard condition. The protocol is designed so that every run ends in an actionable verdict and one executable next step — regardless of how ambiguous the input is.
+
+## What PA_PVP accepts
+
+PA_PVP is designed to handle five classes of input:
+
+- **A plan to pressure-test** — bullet lists, numbered steps, or an implementation plan you want evaluated for weaknesses before execution.
+- **An artifact to audit** — a prompt, document, protocol, code sample, specification, or any other artifact that needs adversarial review.
+- **A decision with competing options** — two or more viable paths where you need a verdict or the smallest probe required to break the tie.
+- **A target plus an evaluation method** — a named framework, checklist, or standard applied to a specific artifact (`TOOL + TARGET` mode).
+- **A previous PA_PVP snapshot to continue** — paste the entire prior output and the kernel auto-recovers item state for delta-only continuation, with no manual editing required.
+
+## What PA_PVP returns
+
+Every valid PA_PVP output contains four surfaces:
+
+| Surface | Contents |
+|---|---|
+| **Verdict** | `DO NOW`, `DO LATER`, or `DISCARD` — one per item, never "depends" |
+| **`[NEXT]`** | One concrete, observable next action with a timebox and a fail condition |
+| **Machine snapshot** | A single code block starting with `STATE: DECISION.TEST.FINAL` — reusable as input for the next run |
+| **Human table** | A derived markdown table after the code block for quick scanning |
+
+The machine snapshot is the source of truth. The human table is a read-only derived view and is not reusable as machine state.
+
+## Design principles
+
+**Forced verdicts.** The kernel always closes with `DO NOW`, `DO LATER`, or `DISCARD`. Uncertainty is resolved by probing, simulation, or parking — never by leaving the verdict open.
+
+**Executable steps.** Every step follows the grammar `OBSERVABLE_VERB OBJECT -> OUTPUT | timebox<=Nm | fail_if=OBSERVABLE_CONDITION`. Steps must be measurable or observable, not vague intentions. The `[NEXT]` action always matches an emitted step — it cannot introduce a new action.
+
+**Evidence binding.** Claims are tied to evidence tiers: simulated, derived, historical, real, or experimental. When evidence is weak, the protocol labels the limitation rather than hiding it. Simulated closures are allowed by default (`ClosePolicy=SIM_OK`) but must be explicitly labeled with confidence caps applied.
+
+**Snapshot continuity.** The machine state block is designed for copy/paste reuse. `CopyPasteMode=NO_LOOK` means you paste the entire prior output back as input — no manual cutting or extraction required. The kernel auto-recovers item state from the snapshot.
+
+**Delta-only continuation.** When previous state exists, the kernel focuses only on what changed, what broke, and the smallest patch that improves the decision. Each iteration contains exactly one `[BREAK]` (the highest-impact weakness) and one `[PATCH]` (the minimal fix with best information ROI).
+
+**AI-to-AI peer validation.** PA_PVP supports autonomous ping-pong between AI instances. When previous state exists, the peer executes the current `[NEXT]` step within the run, advances the item state, and produces a delta. A peer may set `contested=YES` to dispute a driver, evidence binding, probe design, or verdict — and the next `[BREAK]` must address the contested point directly.
+
+## Default operating profile
+
+Unless the canonical kernel is edited, PA_PVP runs under this profile:
+
+```text
+ExecCapability=NO_RUNTIME
+ClosePolicy=SIM_OK
+AskUser=OFF
+CopyPasteMode=NO_LOOK
+```
+
+- **`ExecCapability=NO_RUNTIME`** — the protocol does not assume real execution capability; it simulates best-available outcomes when external reality is blocked.
+- **`ClosePolicy=SIM_OK`** — simulated closures are legal when explicitly labeled. Set `REAL_ONLY` for irreversible or high-stakes decisions that must be backed by real evidence.
+- **`AskUser=OFF`** — missing evidence is handled through simulation, probing, parking, or cutting. The protocol does not ask the operator for inputs unless the switch is explicitly set to `ON`.
+- **`CopyPasteMode=NO_LOOK`** — a full prior snapshot can be pasted back without manual extraction or editing.
+
+<Tip>
+You can override any of these defaults in the optional batch header. For example, set `close_policy=REAL_ONLY` for irreversible procurement decisions, or `AskUser=ON` to allow one minimal evidence request per run when the item is externally blocked.
+</Tip>
+
+## "PLUTONIUM-like" — a design metaphor
+
+The name "PLUTONIUM-like" describes PA_PVP's design intent: high-energy, adversarial, and structured to surface failure modes before they propagate. It is a project identity and design metaphor. It is **not** a claim of safety certification, formal verification, or resistance to every adversarial condition. The underlying model may not follow every instruction perfectly; simulated evidence may not match reality; and PA_PVP does not guarantee that any decision is legally, financially, medically, or technically correct.
+
+<Note>
+PA_PVP is licensed under **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**. Attribution recipe: Project: PA_PVP - a PLUTONIUM-like Adversarial Peer Validation Protocol · Source: [GitHub repository](https://github.com/xxyoudeadpunkxx/pa_pvp-a-plutonium-like-adversarial-peer-validation-protocol) · License: CC BY-SA 4.0 · Changes: state what you changed, if anything.
+</Note>
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Load the canonical protocol, activate it, and get your first forced verdict in 60 seconds.
+  </Card>
+  <Card
+    title="Verdicts and Lifecycle"
+    icon="rotate"
+    href="/concepts/verdicts-and-lifecycle"
+  >
+    Understand DO NOW, DO LATER, DISCARD, and how items move through states across runs.
+  </Card>
+</CardGroup>

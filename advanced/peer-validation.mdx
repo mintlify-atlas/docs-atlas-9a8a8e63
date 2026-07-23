@@ -1,0 +1,97 @@
+---
+title: "AI-to-AI Peer Validation with Delta-Only Ping-Pong"
+sidebarTitle: "Peer Validation"
+description: "PA_PVP supports adversarial AI-to-AI validation through delta-only ping-pong: each iteration targets the single highest-impact weakness with one BREAK and one PATCH."
+---
+
+PA_PVP includes a built-in peer validation protocol for AI-to-AI adversarial review. When previous state exists — whether provided through `<<<PREV>>>` or recovered from a pasted snapshot — each peer produces **delta-only output**: one `[BREAK]` identifying what is wrong and one `[PATCH]` applying the minimal fix. This keeps iterations focused and prevents redundant full-output regeneration. Each ping-pong pass advances the decision by addressing the single highest-impact weakness first, making the validation process both efficient and auditable.
+
+<Tip>
+  Use peer validation for high-impact or contested decisions where a single perspective is insufficient. The delta-only structure means validation runs stay compact — they do not re-emit sections that haven't changed, and they provide a causal reference that makes it clear exactly what changed and why.
+</Tip>
+
+## How ping-pong works
+
+<Steps>
+  <Step title="Peer A produces initial output">
+    Peer A processes an item and produces a full output with `STATE: DECISION.TEST.FINAL`. This output becomes the source of truth for the item's current state.
+  </Step>
+  <Step title="Peer B receives the output">
+    Peer B receives Peer A's output as `SNAPSHOT_AS_INPUT` or wrapped inside `<<<PREV>>>`. The protocol auto-recovers the `[ITEM id=...]` block for each item that needs continuation.
+  </Step>
+  <Step title="Peer B produces delta-only output">
+    Peer B emits a `[DELTA]` block containing exactly one `[BREAK]` and one `[PATCH]`. No other item-level blocks are emitted — `[DECISION_MODEL]`, `[EVIDENCE_BINDING]`, `[DATA_ACQUISITION]`, and similar sections are not repeated unless they changed.
+  </Step>
+  <Step title="Peer A receives Peer B's delta">
+    Peer A receives Peer B's output and continues. The recovered state from Peer B's `[ITEM id=...]` block is used as `PREV` for Peer A's next iteration.
+  </Step>
+  <Step title="Iterate until convergence">
+    Each subsequent iteration produces exactly one `[BREAK]` and one `[PATCH]`. The loop continues until a convergence condition is met.
+  </Step>
+</Steps>
+
+## `[BREAK]` requirements
+
+The `[BREAK]` targets the **single driver or impact-graph relationship** with the highest cost-benefit impact. A valid `[BREAK]` must:
+
+- Identify exactly one driver or relationship — not a list of concerns
+- State what is wrong with that driver or relationship concretely and falsifiably
+- Explain **why** it breaks net benefit — what the downstream effect is on the decision's expected value
+- Show the directional impact on each of Cost, Benefit, Risk, and CostOfDelay (e.g., "Risk UP, Benefit DOWN")
+
+A `[BREAK]` that names a vague concern ("the plan has risks") without identifying a specific driver, relationship, or evidence gap is structurally invalid. If the item is `contested=YES`, the `[BREAK]` must address the contested point directly.
+
+## `[PATCH]` requirements
+
+The `[PATCH]` applies the **minimal update** that either increases expected net benefit or increases confidence with the best information ROI. A valid `[PATCH]` must:
+
+- Apply to the driver or relationship identified in `[BREAK]` — a `[PATCH]` that changes something unrelated to `[BREAK]` is a structural violation
+- Show the updated drivers or relationships and the resulting confidence shift (e.g., `rollback_feasibility: LOW → MED`)
+- Prefer **structural changes** over local tweaks — a patch that moves a driver's confidence by redesigning the probe harness is preferred over one that adjusts a label
+
+A `[PATCH]` without a confidence shift or updated driver state is invalid. If no new evidence is available, the patch must reduce uncertainty by narrowing or splitting the decision — it cannot claim progress without a causal anchor.
+
+## DELTA validity
+
+For a `[DELTA]` to be valid, it must include a **causal reference** to at least one of the following observable changes:
+
+- A **named driver** that changed in this iteration
+- A changed **impact-graph relationship** (e.g., `DriverA UP -> DriverB DOWN` with updated strength)
+- A `probe_id` that is new, updated, or expired since the previous run
+- A specific **evidence item** where the tier changed or new evidence was introduced
+
+If none of these causal references is present, the delta is classified as `INVALID_DELTA`:
+
+- The item's `prev_state`, `new_state`, and `verdict` remain unchanged
+- `trigger = INVALID_DELTA`
+- Step 1 is a step that would generate the missing causal reference — a measurement, probe, or log extraction — or the item parks in STANDBY if that is impossible
+
+An `INVALID_DELTA` does not ask the operator for input. It either produces a bounded acquisition step or parks deterministically.
+
+## Contestation
+
+A peer sets `contested=YES` when it disputes any of the following:
+
+- A **driver** — its direction, magnitude, or relevance
+- A **driver relationship** in the impact graph
+- An **evidence binding** — the tier, confidence, or source attribution
+- A **probe design or representativeness judgment**
+- The **verdict** itself
+
+Contestation has structural consequences:
+
+- While `contested=YES`, `probe.status=INCONCLUSIVE` and `representativeness=MED` (no debt protection)
+- With previous state, the **next `[BREAK]`** must address the contested point directly — it cannot target a different driver
+- Without new evidence, the **`[PATCH]`** must reduce uncertainty or narrow/split the decision — it cannot assert resolution without a causal anchor
+
+Contestation is resolved when `contested=NO`, `context_match=YES`, and representativeness has been evaluated and recorded.
+
+## Convergence
+
+The ping-pong loop terminates when any of the following conditions is met:
+
+- The item reaches a **terminal state**: `CLOSED`, `DISCARDED`, or `EXPIRED`
+- A **Hedge Action terminates**: the parallel probe reaches `VALIDATED` or `FALSIFIED`, and the item transitions out of PROBING
+- **No valid causal reference** can be produced: an `INVALID_DELTA` with no bounded acquisition path forces the item into STANDBY or triggers a split
+
+Convergence is deterministic — it does not depend on a peer "deciding" that enough iterations have occurred. The protocol terminates the loop on observable state changes, not on elapsed iterations.

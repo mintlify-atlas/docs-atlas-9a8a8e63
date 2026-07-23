@@ -1,0 +1,123 @@
+---
+title: "PA_PVP Output Contract: Machine State and Human Table"
+sidebarTitle: "Output Contract"
+description: "Every PA_PVP decision run produces exactly one machine code block starting with STATE: DECISION.TEST.FINAL and a derived human-readable markdown table."
+---
+
+Every PA_PVP decision run produces exactly one machine code block and one derived human-readable table. Never two code blocks. Never zero code blocks for a valid output. The code block is the reusable state — it is what you paste into the next run. The table is a derived view only: human-readable, scannable, and ignored by the kernel on the next input.
+
+## Machine State Block
+
+The machine code block must start with the exact line:
+
+```text
+STATE: DECISION.TEST.FINAL
+```
+
+If this header is missing, the output is non-operational and must not be used to execute steps or as input to the next run.
+
+Inside the code block, sections appear in this fixed order:
+
+1. `[USER_PANEL]` — human-facing summary derived from `[PANEL]`, `[QUEUE]`, and `[NEXT]` lines. Contains: `BatchID`, `SummaryCounts`, `TopGates`, `Now`, `Later`, `Cut`, and `NextActions`.
+2. `[PANEL]` — protocol metadata and operating profile. Contains: `Protocol`, `ExecCapability`, `ClosePolicy`, `AskUser`, `CopyPasteMode`, and other fields.
+3. `[QUEUE]` — execution scan surface, one line per item.
+4. `[RECOVERY_INPUT]` — optional; emitted only when explicitly requested.
+5. One `[ITEM id=...]` block per item, in input order.
+
+The following is a minimal well-formed example:
+
+```text
+STATE: DECISION.TEST.FINAL
+
+[USER_PANEL]
+BatchID: B001
+SummaryCounts: ACTIVE=1 | DO_NOW=1 | HIGH=1
+Now: E1
+Later: (none)
+Cut: (none)
+NextActions: E1: S1
+
+[PANEL]
+Protocol: PA_PVP
+ExecCapability: NO_RUNTIME
+ClosePolicy: SIM_OK
+AskUser: NONE
+CopyPasteMode: NO_LOOK
+
+[QUEUE]
+E1 | DRAFT->ACTIVE | DO NOW | HIGH | HIGH | ds:OK | term:N | ct:- | pp:OPEN | exp:30 | gate:NONE | S1
+
+[ITEM id=E1]
+...
+
+[NEXT]
+S1: REVIEW rollback plan -> confirm reversibility | timebox<=30m | fail_if=no documented rollback path
+```
+
+<Note>
+The code block uses PA_PVP blocks only. Free narrative, explanations, apologies, draft prose, diff bodies, artifact text, rationale paragraphs, and human guidance are forbidden inside the code block. This is the `CODE_BLOCK_PURITY` rule. If forbidden content appears inside the code block, the output is `INVALID`.
+</Note>
+
+## Human Table (`[HUMAN_TABLE]`)
+
+After the code block, the kernel emits a standard markdown table as a derived human view. It is placed outside the code block and is never reusable machine state — `SNAPSHOT_AS_INPUT` ignores it.
+
+Columns:
+
+| Column | Source |
+|---|---|
+| `id` | Item id |
+| `verdict` | From `[QUEUE]` |
+| `impact` | From `[QUEUE]` |
+| `urgency` | From `[QUEUE]` |
+| `ds` | From `[QUEUE]` (`OK`, `SLOW`, or `NO_TOOL`) |
+| `term` | From `[QUEUE]` (`Y` or `N`) |
+| `ct` | From `[QUEUE]` (`SIM`, `REAL`, or `-`) |
+| `gate` | From `[QUEUE]` dominant gate token |
+| `state` | `prev_state->new_state` from `[QUEUE]` |
+| `exp` | Effective expire days from `[QUEUE]` |
+| `next` | Step1 token from `[QUEUE]`, or `(none)` |
+
+## Output Validity
+
+<Warning>
+If `[PANEL]` contains `OutputValidity: INVALID`, the output is **diagnostic only**. Do not execute its steps. Do not use it as `<<<PREV>>>`. Do not use it as `SNAPSHOT_AS_INPUT`. The output cannot be promoted as the next machine state.
+
+Common `InvalidReason` values: `BATCH_COVERAGE` (an input id is missing from `[QUEUE]` or `[ITEM]` blocks), `CODE_BLOCK_PURITY` (forbidden content inside the code block), or `PREV_SURFACE` (delta-only surface rule violated).
+</Warning>
+
+A valid output has:
+- `STATE: DECISION.TEST.FINAL` present as the first line of the code block.
+- `[PANEL]` does **not** contain `OutputValidity: INVALID`.
+
+When `OutputValidity: INVALID` is present, the `[QUEUE]` and `[ITEM id=...]` blocks are omitted. The code block contains only `STATE: DECISION.TEST.FINAL`, `[USER_PANEL]` (diagnostic fields only), and `[PANEL]`.
+
+## REPORT Commands
+
+`REPORT` and `REPORT LITE` are special read-only render commands. They are **not** kernel decision runs.
+
+- They take one valid prior snapshot as input.
+- They produce a human-readable render with no code block.
+- They must **not** change verdicts, gates, triggers, steps, or facts.
+- `REPORT LITE` produces a one-page scan-first summary: counts, `DO NOW` list, top blockers, per-item next token.
+- `REPORT` produces a full derived report: per-item panels, steps, and mechanical metrics where derivable.
+
+If the snapshot is missing or malformed, the kernel outputs exactly `ERROR: missing or invalid snapshot` and stops.
+
+## Executable Step Grammar
+
+All steps in `[STEPS]` and `[NEXT]` must follow this grammar:
+
+```text
+S{n}: <OBSERVABLE_VERB> <OBJECT> -> <OUTPUT> | timebox<=<N>m | fail_if=<OBSERVABLE_CONDITION>
+```
+
+Steps must be observable or measurable. Vague verbs, subjective outputs, and unmeasurable fail conditions are not valid.
+
+`[NEXT]` must match exactly one step already emitted in `[STEPS]`. It cannot introduce a new action that does not appear in the steps list.
+
+When more than five steps are needed, the protocol emits the first five after priority ordering, or splits independent goals into separate items. The priority order for Step 1 is:
+
+1. Falsification or external block resolution.
+2. Dependency waiver or cycle-breaking step.
+3. Highest cost-benefit impact step from the ranked list.

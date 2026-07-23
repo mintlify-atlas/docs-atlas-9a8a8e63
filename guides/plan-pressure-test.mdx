@@ -1,0 +1,130 @@
+---
+title: "Pressure-Testing a Plan with PA_PVP"
+sidebarTitle: "Plan Pressure-Test"
+description: "Use PA_PVP's PLAN mode to expose the highest-impact weakness in an implementation plan, get a forced verdict, and receive one executable next action."
+---
+
+Use PA_PVP to pressure-test a plan before execution. The protocol exposes the highest-impact weakness, assigns a verdict, and gives you one concrete next step — without requiring you to enumerate every risk yourself. Instead of asking you to brainstorm failure modes, PA_PVP identifies the single critical driver standing between your plan and safe execution, then tells you exactly what to do about it.
+
+## When to use PLAN mode
+
+PLAN mode is the right choice whenever you have a multi-step sequence and want to know whether it is safe to start. Typical uses include:
+
+- Architecture decisions with multiple implementation paths
+- Implementation plans with uncertain dependencies or rollback requirements
+- Rollout strategies that span multiple teams or systems
+- Migration plans where the order of steps is load-bearing
+- Any multi-step plan where you want to know if it is ready to execute before investing further effort
+
+## Step-by-step guide
+
+<Steps>
+  <Step title="Load PA_PVP into your AI system">
+    Open the canonical protocol file and provide it to your AI system before submitting any plan. The file is `PA_PVP_full_v9.9.0_canonical.txt`, available in the [project repository](https://github.com/xxyoudeadpunkxx/pa_pvp-a-plutonium-like-adversarial-peer-validation-protocol).
+
+    See the [quickstart](/quickstart) for the full loading procedure.
+  </Step>
+
+  <Step title="Activate the protocol">
+    After loading the file, give your AI system the following instruction to activate PA_PVP as the active decision protocol:
+
+    ```text
+    Use PA_PVP as the active decision protocol for the next input. Follow its output contract exactly.
+    ```
+  </Step>
+
+  <Step title="Submit the plan">
+    You can submit a plan using plain language or the formal item wrapper. Both are valid inputs.
+
+    **Plain language approach** — paste the plan directly with a brief framing statement:
+
+    ```text
+    This implementation plan looks plausible, but I am not sure the dependencies and rollback
+    path are strong enough. Use PA_PVP to pressure-test it and give me the next action.
+
+    <paste your plan here>
+    ```
+
+    **Formal PLAN wrapper approach** — use when you need deterministic batching, explicit item IDs, or machine-to-machine exchange:
+
+    ```text
+    <<<I id=E1 title="API migration plan">>>
+    <<<PLAN>>>
+    1. Audit all current API consumers
+    2. Create compatibility shim for v1 → v2
+    3. Deploy shim to staging
+    4. Run integration tests
+    5. Migrate consumers in batches
+    6. Decommission v1 endpoint after 30 days
+    <<<END>>>
+    ```
+  </Step>
+
+  <Step title="Read the result">
+    The response contains one machine-readable code block starting with `STATE: DECISION.TEST.FINAL` and a human-readable table beneath it.
+
+    The two scan points you need immediately are:
+
+    - **`[QUEUE]`** — find your item's row to read its verdict (`DO NOW`, `DO LATER`, or `DISCARD`), its dominant gate, and its `step1` token.
+    - **`[NEXT]`** — the single executable action you should take first.
+
+    The `[NEXT]` step matches exactly one step already listed in `[STEPS]`. It is never a meta-action like "analyze further" — it is concrete and timebox-bounded.
+  </Step>
+
+  <Step title="Execute, then continue">
+    Execute the `[NEXT]` step, collect the outcome as evidence, then paste the entire previous PA_PVP output back as your next input:
+
+    ```text
+    Continue this PA_PVP state and advance its current NEXT step:
+    <paste the previous PA_PVP output here>
+    ```
+
+    PA_PVP recovers the item state automatically from the pasted snapshot (no manual editing required) and produces a delta-only continuation targeting what changed, what broke, and the smallest improvement.
+  </Step>
+</Steps>
+
+## What the FAIL-FAST gate means
+
+Before evaluating any plan, PA_PVP applies a signal-to-noise ratio (SNR) gate. A plan must expose at least a **goal state**, a **system boundary**, and a **hard constraint**. If any of these are missing or too vague to evaluate, PA_PVP triggers FAIL-FAST.
+
+With the default settings (`CopyPasteMode=NO_LOOK`), FAIL-FAST does **not** ask you for the missing specifications. Instead, PA_PVP auto-derives minimal specifications as `SIMULATED` and continues. These simulated specs are always labeled — they cannot be disguised as real inputs.
+
+If FAIL-FAST triggers a second time for the same item (tracked via `fail_fast_count`), the item is discarded with `trigger=FAIL_FAST_CUT`. This is a signal that the plan lacks sufficient structure to evaluate, not a failure of the protocol.
+
+## Interpreting the result
+
+Each verdict has a specific operational meaning:
+
+| Verdict | What it means | What to do |
+|---|---|---|
+| **DO NOW** | The plan is active and has an executable next move. | Execute the `[NEXT]` step immediately. |
+| **DO LATER** | The plan is parked, typically waiting on a dependency, evidence, or an external blocker. | Check `dominant_gate` in `[QUEUE]` to understand why. |
+| **DISCARD** | The plan should not proceed under its current state. | Check `trigger` in `[ITEM_PANEL]` for the specific reason. |
+
+For `DO LATER` items, the most common gates are:
+
+- `EXTERNAL_BLOCK` — the plan depends on something outside the current run
+- `DEPENDENCY_BLOCK` — a declared `depends_on` item has not yet resolved
+- `CONFIDENCE_CAP` — critical driver confidence is too low to proceed without a probe
+- `FRAGILITY` — the decision score sits on a threshold boundary; a cheap probe is needed first
+
+## Continuing a run
+
+Continuation is designed to be copy-paste with no manual editing. Paste the entire previous output:
+
+```text
+Continue this PA_PVP state and advance its current NEXT step:
+<paste the previous PA_PVP output here>
+```
+
+PA_PVP detects the `STATE: DECISION.TEST.FINAL` header, recovers the per-item state, and processes the continuation as delta-only — focusing only on what changed and producing one new `[BREAK]` and one `[PATCH]` rather than repeating the full output.
+
+<Tip>
+  For high-impact plans that cannot be undone, consider setting `reversibility=IRREVERSIBLE` in the item wrapper:
+
+  ```text
+  <<<I id=E1 title="Production database migration" reversibility=IRREVERSIBLE>>>
+  ```
+
+  When `reversibility=IRREVERSIBLE` is set, `ClosePolicy=REAL_ONLY` applies automatically. The item cannot close on simulated evidence alone — it requires real, historical, or experimental evidence provided via `<<<NEW_EVIDENCE evidence_tier=HISTORICAL|REAL|EXPERIMENT>>>` before PA_PVP will mark it as done.
+</Tip>

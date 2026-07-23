@@ -1,0 +1,159 @@
+---
+title: "PA_PVP Scoring: Impact, Confidence, and Decision Score"
+sidebarTitle: "Scoring"
+description: "PA_PVP computes a decision score using a benefit-cost formula to assign impact buckets (LOW, MED, HIGH) — used for output scaling, triage, and prioritization, not as a truth claim."
+---
+
+PA_PVP computes a numeric Decision Score as a triage signal. It is not a truth claim — it drives impact bucket assignment (LOW/MED/HIGH), output scaling, and data acquisition prioritization. The verdict always takes precedence over the score. When the score sits near an impact threshold, the Fragility Gate may move an item into `PROBING` before a verdict is finalized, which is one of the clearest signs that the score is doing its intended job: surfacing instability rather than forcing a premature close.
+
+---
+
+## FULL Profile Scoring
+
+Used for normal, non-DIY items. All four variables are rated LOW=1, MED=2, HIGH=3.
+
+| Variable | Meaning |
+|---|---|
+| `B` (Benefit) | Expected upside if the decision succeeds |
+| `C` (Cost) | Resource, time, or effort cost of pursuing this item |
+| `R` (Risk) | Probability-weighted downside or harm |
+| `D` (Cost of Delay) | Value lost by waiting instead of acting now |
+
+**Formula:**
+
+```text
+Raw = (B * 1) - (C * 0.8) - (R * 1.2) + (D * 0.5)
+Score = ((Raw + 4.5) / 7.0) * 100, clamped 0..100
+```
+
+**Impact mapping:**
+
+| Score range | Impact |
+|---|---|
+| 70 – 100 | HIGH |
+| 40 – 69 | MED |
+| 0 – 39 | LOW |
+
+The weights are intentional: Risk is penalized more heavily than Cost (`R * 1.2` vs `C * 0.8`), and Cost of Delay is given a positive contribution (`D * 0.5`) to reward time-sensitivity. A decision with high benefit, low cost, low risk, and high cost of delay will score near the top of the range.
+
+---
+
+## DIY Profile Scoring (Anchor-Based)
+
+Used for fast execution contexts: setup, debug, refactor, quick operations. Variables are rated LOW=1, MED=2, HIGH=3.
+
+| Variable | Meaning |
+|---|---|
+| `B` (Benefit) | Expected upside |
+| `C` (Cost) | Effort or resource cost |
+| `R` (Risk) | Downside or harm |
+| `D` (Cost of Delay) | Value lost by waiting |
+| `Friction` | Operational friction — LOW=1, MED=2, HIGH=3 |
+
+**Formula:**
+
+```text
+Raw = (B * 3) - (C + R + D + Friction)
+```
+
+**Impact mapping:**
+
+| Raw value | Impact |
+|---|---|
+| ≥ 4 | HIGH |
+| 1 – 3 | MED |
+| ≤ 0 | LOW |
+
+**Decision Score display anchors (DIY, display-only):**
+
+| Impact | Anchor score |
+|---|---|
+| HIGH | 85 |
+| MED | 60 |
+| LOW | 30 |
+
+**Confidence penalty (visual-only):** If `critical_driver_confidence` is LOW or VERY_LOW, the display anchor is reduced by 20 points (clamped to 0..100). This is a visual signal only — it does not affect impact, triggers, or routing.
+
+<Note>
+The DIY Decision Score does **not** drive triggers. Impact drives triggers in the DIY profile. The numeric anchor is display-only and exists only to give a human-readable indication of score magnitude. Governance conditions, gates, and verdicts derive from the `impact` bucket, not from the anchor number.
+</Note>
+
+---
+
+## Fragility Gate
+
+When the score lands near an impact threshold, the item is considered fragile and should not be closed without a probe.
+
+**FULL profile:**
+
+| Fragile range | Near threshold |
+|---|---|
+| 35 – 45 | Near the 40 (LOW/MED) boundary |
+| 65 – 75 | Near the 70 (MED/HIGH) boundary |
+
+**DIY profile:**
+
+Raw in `{0, 1, 3, 4}` — values one step from the MED and HIGH impact boundaries.
+
+**Rule:** If `FRAGILE_SCORE=TRUE` and `impact` is not LOW:
+- The item is treated as `PROBING`.
+- The kernel prioritizes an internal simulation or probe targeting the `critical_driver`.
+- The item is not finalized to `CLOSED` in this run unless the probe resolves the boundary.
+- If Cost of Delay is HIGH, a Hedge Action is allowed (with risk cap, parallel probe, and declared `falsification_debt`), but the item remains `PROBING`.
+- `trigger=FRAGILITY` is set unless a higher-priority trigger already governs the item.
+
+---
+
+## Verdict Precedence
+
+The Decision Score is a consistency check and scaling signal, not a decision authority. The verdict follows this precedence order — higher entries override lower ones:
+
+1. **Falsification Principle** — A representative, context-matched probe that falsifies the critical driver forces `verdict=DISCARD` unconditionally.
+2. **Reality Probe / Hedge / Truth-or-Dare governance constraints** — Governance rules from active probes, hedge conditions, or truth-or-dare obligations.
+3. **Expected net benefit under uncertainty** — Driver-based analysis supported by Evidence Binding. This is where the score contributes most directly.
+4. **Score/Impact as consistency check and scaling signal only** — Impact bucket determines output compression and data acquisition priority. It does not override the above.
+
+<Note>
+The Decision Score is display-only in the output and may be omitted from `[ITEM_PANEL]`. It is not the sole reason for a verdict — the verdict is always determined by the precedence order above, with the score serving as a triage and scaling tool rather than a decision authority.
+</Note>
+
+---
+
+## Evidence Tiers
+
+Evidence quality directly affects confidence caps and, through them, the score's reliability. Higher-tier evidence allows higher confidence values; lower-tier evidence enforces automatic caps.
+
+| Tier | Description |
+|---|---|
+| `SIMULATED` | Internally derived by the AI — no external observation; thought experiments, synthetic examples |
+| `DERIVED` | Calculated from assumptions within the run — no real measurement |
+| `HISTORICAL` | Past observations from external sources, not from the current context |
+| `REAL` | Direct observation or measurement in the current operational context |
+| `EXPERIMENT` | Controlled experiment or probe result, adversarially designed to falsify a critical driver |
+
+The order from weakest to strongest is: `SIMULATED < DERIVED < HISTORICAL < REAL < EXPERIMENT`.
+
+**Confidence caps by tier and domain:**
+
+| Domain | SIMULATED / DERIVED | HISTORICAL | REAL / EXPERIMENT |
+|---|---|---|---|
+| Deterministic | MED (unless provably tested) | HIGH allowed | HIGH allowed |
+| Probabilistic | MED | MED | HIGH allowed |
+| Complex / Chaotic | MED | MED | HIGH (if `representativeness=HIGH`, `context_match=YES`, `contested=NO`) |
+
+When declared confidence exceeds the allowed cap, it is downgraded to the cap value and `trigger=CONFIDENCE_CAP_APPLIED` is set (unless a higher-priority trigger already governs the item).
+
+---
+
+## Missing Ratings Handling
+
+If any of `rating`, `drivers`, `confidence`, or `evidence_tier` is missing for Benefit, Cost, Risk, or Cost of Delay, the kernel applies defaults rather than blocking:
+
+| Missing field | Default applied |
+|---|---|
+| `rating` | `MED` |
+| `confidence` | `LOW` |
+| `evidence_tier` | `SIMULATED` |
+| `drivers` | Includes `MISSING_INFO` |
+
+The item is marked `missing_ratings=YES` in `[ITEM_PANEL]`, a top-priority data acquisition entry is added for the missing inputs, and the item is not transitioned to `CLOSED` unless `impact=LOW`. For DIY profile items with missing Friction, the default is `Friction=MED` with `confidence=LOW`.

@@ -1,0 +1,88 @@
+---
+title: "Falsification Debt: Tracking Unresolved Critical Drivers"
+sidebarTitle: "Falsification Debt"
+description: "Falsification Debt records critical decision drivers that remain active without sufficient evidence. PA_PVP limits active debt to two critical drivers per item."
+---
+
+Falsification Debt is PA_PVP's explicit accounting for uncertainty. When a decision proceeds on a critical driver that hasn't been validated by real evidence, debt is opened — and tracked in every subsequent run. Unlike a soft warning, debt actively shapes routing: it caps confidence, forces the item into SLOW execution mode, and appears in both `[HUMAN_TABLE_OPS]` and `[RISK_DASHBOARD]` so operators can see exactly which drivers are unsupported. Debt is not a signal that something went wrong; it is a signal that a decision is being carried forward on an explicitly acknowledged gap.
+
+## What opens debt?
+
+<Note>
+  Falsification Debt opens on a critical driver when **any** of the following conditions is true:
+
+  - A dependency is explicitly **waived** while that dependency is not CLOSED or DISCARDED
+  - A probe is adopted at **MED representativeness** — MED representativeness does not protect from debt
+  - A probe **expires** without renewal — an expired probe no longer protects the driver it covered
+  - A PROBING item proceeds under `ClosePolicy=SIM_OK` with SIMULATED evidence
+  - A **Hedge Action** is active — a parallel probe is required, and debt is declared alongside it
+</Note>
+
+## Debt ceiling
+
+The kernel limits active debt to **two critical drivers at any time** across the batch. If a third driver would become debt-eligible, the item carrying that driver cannot proceed as `DO NOW`. Instead:
+
+- `dominant_gate = DEBT_CEILING`
+- `trigger = DEBT_CEILING`
+- The item is forced to PROBING or STANDBY
+
+The blocked item does not emit a clearing step for a driver that belongs to a different item. If the item can be redesigned or split so it no longer opens a third debt driver, that redesign or split step becomes Step 1. Otherwise the item stays STANDBY and `[NEXT]` names the active debt driver that must clear before revive.
+
+When more than two candidate debt drivers exist, PA_PVP selects exactly two using a deterministic tie-break: higher item count for that driver first, then higher Cost of Delay, then lower confidence, then lexical order of the driver string.
+
+## Debt format in output
+
+In `[ITEM_PANEL]`, open debt is expressed as:
+
+```text
+falsification_debt: OPEN(critical_driver_name)
+```
+
+For example:
+
+```text
+falsification_debt: OPEN(rollback_feasibility)
+```
+
+When no debt is open, the field reads `falsification_debt: NONE`. The field is authoritative — it is used by `[HUMAN_TABLE_OPS]` and `[RISK_DASHBOARD]` to derive the `debt` column shown to operators.
+
+## Closing debt
+
+Debt closes automatically when:
+
+- The probe targeting that driver returns `VALIDATED` or `FALSIFIED`
+- The item reaches a terminal state (`CLOSED`, `DISCARDED`, or `EXPIRED`)
+- The driver is no longer critical in any active decision
+- The critical driver confidence rises to `MED` or higher through new evidence
+
+With `REAL`, `HISTORICAL`, or `EXPERIMENT` evidence provided via `<<<NEW_EVIDENCE>>>`, debt can close without requiring a full probe cycle — the evidence directly upgrades the confidence of the driver and clears the debt in the same run.
+
+On probe **adoption or disadoption**, debt is recomputed immediately in the same run. Disadoption causes immediate loss of debt protection.
+
+## Dependency waiver → debt
+
+When an operator explicitly waives a dependency (accepting blind-risk to proceed without waiting for it to resolve), the following consequences apply automatically:
+
+1. `critical_driver_confidence` is **capped to LOW** for this run — the waiver is not treated as evidence
+2. `falsification_debt = OPEN(critical_driver)` is recorded
+3. A probe or acquisition step must be included in `[STEPS]` to reduce the uncertainty created by the waiver (unless item `impact` is LOW)
+4. The waiver action itself is the **earliest non-conflicting step** if no higher-priority Step 1 condition is active; the required probe or acquisition step follows it at the earliest available position
+
+This means waiving a dependency is always legible in the output — it cannot be hidden by omitting steps or leaving the debt field blank.
+
+## Debt re-evaluation
+
+Debt is not a static label. It is recomputed on every run. On **probe adoption**, debt may close if the adopted probe provides HIGH representativeness coverage. On **probe disadoption**, debt re-opens immediately. This ensures that the debt field always reflects the current state of evidence, not a historical snapshot.
+
+<Warning>
+  Falsification Debt is not a soft warning. It appears in `[HUMAN_TABLE_OPS]` and `[RISK_DASHBOARD]`, affects confidence caps (preventing HIGH confidence while debt is open), drives execution mode to `ds=SLOW`, and — when the ceiling is reached — blocks additional items from proceeding as `DO NOW`. Do not treat an `OPEN(...)` field as informational only.
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Reality Probes & Falsification" icon="flask" href="/advanced/probes-and-falsification">
+    Learn how probes are designed, adopted, and how they protect decisions from Falsification Debt.
+  </Card>
+  <Card title="Hedge Actions" icon="shield-halved" href="/advanced/hedge-actions">
+    Understand when a bounded advance under uncertainty is allowed and what debt obligations it creates.
+  </Card>
+</CardGroup>

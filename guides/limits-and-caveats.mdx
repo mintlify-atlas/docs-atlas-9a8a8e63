@@ -1,0 +1,103 @@
+---
+title: "PA_PVP Practical Limits and Important Caveats"
+sidebarTitle: "Limits & Caveats"
+description: "PA_PVP is a text protocol, not a software runtime. It cannot guarantee correctness, execute code, or replace real evidence — understanding these limits is part of using it responsibly."
+---
+
+PA_PVP is a powerful decision structuring tool, but it has hard limits that you should understand before relying on it for high-stakes decisions. The protocol helps you find the highest-impact weakness in a plan or artifact, assigns a forced verdict, and gives you one executable next step — but it operates entirely within a language model and has no access to your systems, your codebase, or the real world.
+
+## What PA_PVP cannot guarantee
+
+<Warning>
+  PA_PVP cannot guarantee any of the following, regardless of how the protocol is configured:
+
+  - **The underlying model follows every instruction perfectly.** Complex edge cases, very long contexts, and highly ambiguous inputs may reduce compliance with the output contract.
+  - **Simulated evidence matches reality.** When the protocol operates with `ClosePolicy=SIM_OK`, closures are marked `SIMULATED` and confidence-capped — but simulated outcomes are not measurements.
+  - **A decision is legally, financially, medically, or technically correct.** PA_PVP is a structuring tool, not a domain expert. Its verdicts are triage signals, not authoritative rulings.
+  - **External facts are current unless they are inspected.** The protocol uses whatever evidence is provided to it. Stale inputs produce stale outputs.
+  - **An irreversible decision can be closed without real evidence.** When `reversibility=IRREVERSIBLE` is set, `ClosePolicy=REAL_ONLY` applies automatically. Without real, historical, or experimental evidence, the item will not close.
+</Warning>
+
+## PA_PVP is not a software runtime
+
+PA_PVP is a text protocol that structures decisions inside a language model. It has no execution environment of its own.
+
+- It does **not** execute code or shell commands
+- It does **not** have network access, file system permissions, or API credentials
+- It cannot perform real measurements — only simulate them using available context
+- Step execution results marked `status=COMPLETED_SIMULATED` with `evidence_tier=SIMULATED` or `DERIVED` are internal reasoning, not observed outcomes
+- Real execution depends entirely on the AI host, the tools available to it, and external systems you connect
+
+When `ExecCapability=NO_RUNTIME` (the default), the protocol explicitly acknowledges this constraint and applies simulated outcomes where real execution would be required.
+
+## Simulated vs real evidence
+
+PA_PVP tracks evidence quality through five tiers. The tier determines what confidence levels are permitted and whether a decision can close.
+
+<Note>
+  **Evidence tiers, from weakest to strongest:**
+
+  | Tier | What it means | When it applies |
+  |---|---|---|
+  | `SIMULATED` | Internal reasoning, synthetic examples, thought experiments | Default when no external evidence is provided |
+  | `DERIVED` | Calculations derived from assumptions, no real measurement | Computed estimates based on provided context |
+  | `HISTORICAL` | Past data or logs, not from the current run | Prior measurements, past deployments, existing records |
+  | `REAL` | Direct observation or measurement in the current context | Live data, current test results, observed outcomes |
+  | `EXPERIMENT` | Adversarial test designed to falsify the critical driver | Purpose-built probes with observable kill-switch conditions |
+
+  **Default profile behavior:** With `ClosePolicy=SIM_OK`, simulated closures are legal when labeled with `evidence_tier=SIMULATED` and confidence caps applied. The label cannot be suppressed — simulated closure is always visible in the output.
+
+  **For irreversible decisions or real-only requirements:** Set `ClosePolicy=REAL_ONLY` in the batch header, or set `reversibility=IRREVERSIBLE` on the item. Either triggers the same constraint: the item can only close when `<<<NEW_EVIDENCE evidence_tier=HISTORICAL|REAL|EXPERIMENT>>>` is provided.
+</Note>
+
+## "PLUTONIUM-like" design metaphor
+
+The name PA_PVP — and the "PLUTONIUM-like" descriptor — is a design metaphor for the protocol's adversarial intensity and criticality orientation. It signals that the protocol is built for decisions that matter: where weak reasoning has real costs and where a forced verdict is more useful than an open-ended discussion.
+
+It is **not** a claim of:
+
+- Safety certification or formal verification
+- Resistance to every adversarial input or edge case
+- Correctness guarantees in legal, medical, financial, or safety-critical domains
+- Autonomy or agency beyond text generation within a language model
+
+## Model compliance limits
+
+PA_PVP relies on the AI host to follow the kernel contract. The protocol defines deterministic rules, but language models are probabilistic systems.
+
+- Different models comply with the contract to different degrees
+- Complex edge cases — highly ambiguous inputs, extremely long contexts, contradictory evidence — may reduce compliance
+- Output validity is declared in `[PANEL]`: if `OutputValidity: INVALID` appears, treat the output as diagnostic only
+- Always check the `STATE` header before relying on output as machine state — if `STATE: DECISION.TEST.FINAL` is missing, the output is non-operational and must not be used as `<<<PREV>>>` or `SNAPSHOT_AS_INPUT`
+
+## When to use real evidence
+
+<CardGroup cols={2}>
+  <Card title="Irreversible decisions" icon="lock" href="/advanced/batch-and-dependencies">
+    Set `reversibility=IRREVERSIBLE` in the item wrapper. PA_PVP will require real, historical, or experimental evidence to close the item. Simulated closure is blocked regardless of `ClosePolicy`.
+  </Card>
+  <Card title="High-stakes architecture choices" icon="building-columns" href="/advanced/batch-and-dependencies">
+    Set `close_policy=REAL_ONLY` in the batch header. All items in the batch will require real evidence for closure, ensuring no architecture decision closes on simulation alone.
+  </Card>
+  <Card title="Legal or financial commitments" icon="scale-balanced" href="/reference/input-syntax">
+    Do not rely solely on simulated closure. Provide real evidence via `<<<NEW_EVIDENCE evidence_tier=REAL>>>` before any item that represents a binding commitment is marked done.
+  </Card>
+  <Card title="Production deployments" icon="server" href="/advanced/probes-and-falsification">
+    Run real experiments and feed results back as `evidence_tier=EXPERIMENT`. This upgrades the evidence tier, allows higher confidence, and supports fast-close when two independent validating probes exist.
+  </Card>
+</CardGroup>
+
+## License and attribution
+
+<Note>
+  This project is licensed under **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**.
+
+  If you use, adapt, or redistribute PA_PVP or materials derived from it, the attribution recipe is:
+
+  - **Project:** PA_PVP - a PLUTONIUM-like Adversarial Peer Validation Protocol
+  - **Source:** link to the [project repository](https://github.com/xxyoudeadpunkxx/pa_pvp-a-plutonium-like-adversarial-peer-validation-protocol) or the specific file
+  - **License:** CC BY-SA 4.0
+  - **Changes:** state what you changed, if anything
+
+  See the [`LICENSE`](https://github.com/xxyoudeadpunkxx/pa_pvp-a-plutonium-like-adversarial-peer-validation-protocol/blob/main/LICENSE) file for the full license text.
+</Note>

@@ -1,0 +1,127 @@
+---
+title: "Reality Probes and Falsification in PA_PVP"
+sidebarTitle: "Probes & Falsification"
+description: "PA_PVP triggers reality probes when critical driver confidence is low — observable, time-boxed experiments with kill switches that can validate or falsify a decision."
+---
+
+When a critical driver has low confidence, PA_PVP does not proceed on assumptions — it moves the item into **PROBING** state and requires an observable reality probe before the decision can be closed. A probe is an adversarially designed experiment whose sole job is to falsify the critical driver. If the probe confirms the driver, confidence rises. If it falsifies it, the verdict is immediately forced to DISCARD. This mechanism is PA_PVP's primary defense against simulation-backed overconfidence: decisions cannot close as VALIDATED unless the evidence behind their critical driver has been genuinely tested.
+
+## What is a reality probe?
+
+A probe is not a brainstorm or a planning document. It is a concrete, time-boxed, observable experiment that targets a **specific driver** — the one driver whose failure would most change the decision outcome. Each probe must declare:
+
+- **decision context** — the real operational decision the probe informs, declared as three fields:
+  - `decision_context_id`: a short, stable label for the operational decision
+  - `decision_context_driver`: the critical driver the decision context is about
+  - `decision_context_metric`: the success metric used by the real decision context
+- **constraint_signature** — a canonical signature string that identifies the execution environment and constraints:
+
+```text
+ENV=<prod|staging|dev|sim>|SCALE=<XS|S|M|L|XL>|DATA=<R|S|H>|TIME=<1m|10m|60m|1d>|CONSTRAINTS=<id1,id2,...>
+```
+
+  Keys must appear in this exact order. `CONSTRAINTS` is optional; when present, its ids are sorted lexically.
+
+- **target_driver** — exact string match to the item's `critical_driver`
+- **kill_switch** — an observable binary or numeric threshold condition that determines whether the probe falsifies the driver (e.g., `p99_latency > 200ms` or `rollback_time > 30m`)
+- **representativeness check** — the three-question evaluation described below
+
+<Note>
+  A probe cannot use a protocol decision as its own `decision_context`. Self-validation is structurally invalid — a probe that validates the same protocol item it belongs to cannot establish context_match=YES.
+</Note>
+
+## Probe object fields
+
+Each probe in `[PROBE_LOG]` carries the following fields:
+
+<Accordion title="All probe object fields">
+  | Field | Description |
+  |---|---|
+  | `probe_id` | Stable unique identifier for this probe instance |
+  | `target_driver` | The critical driver this probe targets (exact string match) |
+  | `decision_context` | Human-readable description of the operational decision |
+  | `decision_context_id` | Short stable label for the operational decision |
+  | `decision_context_driver` | The critical driver the decision context is about |
+  | `decision_context_metric` | The success metric used by the real decision context |
+  | `constraint_signature` | Canonical signature string in `ENV=\|SCALE=\|DATA=\|TIME=\|CONSTRAINTS=` format |
+  | `creator_decision_id` | The item id that created this probe |
+  | `adopters` | List of decision ids that have adopted this probe |
+  | `status` | Current probe status: `ACTIVE`, `INCONCLUSIVE`, `VALIDATED`, `FALSIFIED`, or `EXPIRED` |
+  | `context_match` | Whether the probe context matches the adopter's decision context: `YES`, `NO`, or `UNKNOWN` |
+  | `adopted_at` | Timestamp of adoption per adopter |
+  | `kill_switch` | Object with `condition` (observable threshold) and `triggered` (YES/NO) |
+  | `representativeness_check` | Recorded answers to the three representativeness questions |
+  | `representativeness` | Derived representativeness score: `HIGH`, `MED`, or `LOW` |
+  | `contested` | Whether a peer disputes this probe: `YES` or `NO` |
+  | `created_at` | Probe creation timestamp |
+  | `expires_at` | Expiry timestamp (default: `created_at + 90 days`) |
+</Accordion>
+
+## Representativeness
+
+Before a probe can protect a decision from Falsification Debt or support fast closure, it must pass a three-question representativeness check evaluated strictly against the declared `decision_context`:
+
+1. **Same critical driver?** — Does the probe target the same driver that is critical for this decision?
+2. **Environment matches real use (scale/constraints/data)?** — Does the constraint_signature reflect the actual production environment?
+3. **Success metric identical?** — Is the `decision_context_metric` the same metric the real decision depends on?
+
+The answers map to a representativeness score:
+
+| Answers | Score |
+|---|---|
+| 3 YES | HIGH |
+| 2 YES | MED |
+| ≤1 YES | LOW |
+
+The score determines what the probe can do:
+
+- **LOW** → the probe is `INCONCLUSIVE` for all adopters and provides no debt protection
+- **MED** → the probe is adoptable, but does **not** protect from Falsification Debt
+
+A `contestation` event automatically caps representativeness to MED. An `OVERRIDE_REPR(owner)` token can be appended to the representativeness field to record an explicit override (e.g., `MED OVERRIDE_REPR(peerA)`), but the token does not change the base representativeness bucket — it only records the override owner for audit.
+
+## Probe lifecycle
+
+A probe moves through the following statuses:
+
+| Status | Meaning |
+|---|---|
+| `ACTIVE` | The probe is running; the item is in PROBING state |
+| `INCONCLUSIVE` | Context mismatch, LOW representativeness, or contestation prevents a clear result |
+| `VALIDATED` | The kill switch was not triggered; the critical driver holds |
+| `FALSIFIED` | The kill switch was triggered; the critical driver does not hold |
+| `EXPIRED` | The probe TTL has elapsed without renewal |
+
+**TTL:** Probes expire 90 days after `created_at` by default. Once expired, a probe does not protect the item from Falsification Debt. Adopters may keep referencing an expired probe only as `HISTORICAL` evidence at reduced confidence.
+
+**Renewal:** To renew, create a new `probe_id`. You cannot silently extend an existing probe. The new probe must re-declare `decision_context`, `target_driver`, `kill_switch`, and `representativeness_check` from scratch.
+
+**Expiry pause rule:** If a decision is in STANDBY and has an ACTIVE adopted (non-expired) probe, the STANDBY inactivity clock pauses until the probe is no longer ACTIVE.
+
+## Falsification Principle
+
+<Warning>
+  When a reality probe contradicts a critical driver — specifically when `probe.status=FALSIFIED`, `context_match=YES`, and `representativeness=HIGH` — PA_PVP immediately forces `Verdict=DISCARD` with `trigger=FALSIFICATION`. This is the fast-discard rule. No other analysis overrides it; the item transitions to DISCARDED in the same run.
+</Warning>
+
+## Fast-close rule
+
+Two independent, current, HIGH-representativeness VALIDATED probes can close an item fast — transitioning it to `CLOSED` — provided all of the following hold for both probes:
+
+- `probe.status = VALIDATED`
+- `context_match = YES`
+- `representativeness = HIGH`
+- Neither probe is expired
+
+For **Complex or Chaotic domains**, at least one of the two validating probes must have `evidence_tier = REAL` or `EXPERIMENT`. Simulated evidence alone is not sufficient for fast closure in those domains, regardless of the representativeness score.
+
+## Redesign triggers
+
+A `REDESIGN_TRIGGER` fires and forces a probe harness redesign or decision split when any of the following conditions is true:
+
+- `probe_cycle_total >= 2` and the critical driver confidence is still `LOW` or `MED` with evidence still at `SIMULATED` or `DERIVED` tier
+- The same critical uncertainty remains `MED` for 2 consecutive iterations with no evidence tier upgrade
+- `INCONCLUSIVE` repeats 2 times in a row for the same `target_driver`
+- `OVERRIDE_REPR(owner)` is used more than once in the first N probes in the tracking window
+
+When a redesign trigger fires, the protocol selects exactly one path in priority order: (A) redesign the probe by changing at least one of `decision_context_metric`, `constraint_signature`, or `kill_switch.condition`; (B) split the decision if multiple independent drivers exist; (C) park in STANDBY if no bounded redesign path is available; (D) DISCARD only if a higher-priority terminal rule already forces it.

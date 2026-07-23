@@ -1,0 +1,102 @@
+{
+  "projectType": "general",
+  "projectName": "PA_PVP",
+  "projectDescription": "A copy/paste adversarial decision protocol for AI systems that converts uncertain plans, artifacts, and choices into a forced verdict, one executable next action, and reusable machine state.",
+  "theme": "luma",
+  "primaryColor": "#C0392B",
+  "lightColor": "#E74C3C",
+  "darkColor": "#7B241C",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "when-to-use"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/verdicts-and-lifecycle",
+              "concepts/input-modes",
+              "concepts/output-contract",
+              "concepts/continuation-and-snapshots"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/probes-and-falsification",
+              "advanced/falsification-debt",
+              "advanced/peer-validation",
+              "advanced/hedge-actions",
+              "advanced/batch-and-dependencies"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Protocol Reference",
+            "pages": [
+              "reference/input-syntax",
+              "reference/output-blocks",
+              "reference/gates-and-triggers",
+              "reference/scoring",
+              "reference/configuration"
+            ]
+          },
+          {
+            "group": "Practical Guides",
+            "pages": [
+              "guides/plan-pressure-test",
+              "guides/artifact-audit",
+              "guides/multi-item-batch",
+              "guides/limits-and-caveats"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Forced verdict on every input: DO NOW, DO LATER, or DISCARD — never 'depends'",
+    "One concrete [NEXT] executable action per decision item",
+    "Machine-readable snapshot output for stateless AI-to-AI ping-pong continuation",
+    "Three input modes: PLAN (pressure-test), ARTIFACT (audit), TOOL+TARGET (analysis)",
+    "Reality probes and falsification gates for evidence-bound closure",
+    "Falsification Debt tracking for unresolved critical drivers",
+    "Delta-only peer validation for iterative AI-to-AI decision refinement",
+    "Batch processing with dependency modeling and resource concurrency",
+    "Configurable operating profile: ExecCapability, ClosePolicy, AskUser switch",
+    "REPORT and REPORT LITE read-only render passes over prior snapshots"
+  ],
+  "publicApiSurface": [
+    "<<<B keep_open= expire_days= exec_capability= close_policy= ssot_scale= resource_pool=>>> batch header",
+    "<<<I id= title= keep_open= expire_days= depends_on= uses= reversibility=>>> item wrapper",
+    "<<<PLAN>>> — bullet list or numbered steps payload",
+    "<<<ARTIFACT>>> — prompt, document, protocol, code, or spec payload",
+    "<<<TOOL>>> + <<<TARGET>>> — named evaluation method applied to a target artifact",
+    "<<<PREV>>> — previous [ITEM id=...] block for delta-only continuation",
+    "<<<NEW_EVIDENCE evidence_tier=HISTORICAL|REAL|EXPERIMENT>>> — evidence to reopen closed items",
+    "<<<CHANGE>>> — observable change declaration to revisit SIMULATED-closed items",
+    "<<<END>>> — item terminator",
+    "REPORT — read-only human render pass over a valid snapshot",
+    "REPORT LITE — 1-page scan-first summary render pass",
+    "STATE: DECISION.TEST.FINAL — required machine output state header",
+    "[QUEUE] — execution scan surface with id, state, verdict, impact, urgency, gate, step1",
+    "[ITEM id=...] — per-item decision block with panel, steps, probes, delta, and derived fields",
+    "[PANEL] — global batch metadata: protocol, policy switches, validity, governance counts",
+    "[HUMAN_TABLE] — derived markdown table for human reading (not machine state)",
+    "dominant_gate values: FAIL_FAST_CUT, FALSIFICATION, DEBT_CEILING, FRAGILITY, DEPENDENCY_BLOCK, CONFIDENCE_CAP, EXTERNAL_BLOCK, REDESIGN_TRIGGER, SCORE_TRIAGE, NONE",
+    "Lifecycle states: DRAFT, ACTIVE, STANDBY, PROBING, CLOSED, EXPIRED, DISCARDED",
+    "Verdict tokens: DO NOW, DO LATER, DISCARD"
+  ]
+}

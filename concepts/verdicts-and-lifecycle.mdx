@@ -1,0 +1,99 @@
+---
+title: "Verdicts, States, and Decision Lifecycle in PA_PVP"
+sidebarTitle: "Verdicts & Lifecycle"
+description: "PA_PVP assigns every item one of three verdicts and tracks it through a defined lifecycle from DRAFT to CLOSED, EXPIRED, or DISCARDED."
+---
+
+Every item processed by PA_PVP moves through a defined set of lifecycle states and is assigned exactly one verdict per run. A verdict is not a suggestion — it is a forced operational choice that maps directly to a state transition. Whether the item is a plan to execute, an artifact to audit, or a decision between competing options, PA_PVP closes it into one of three verdicts and records the resulting state for the next run.
+
+## Verdicts
+
+| Verdict | Meaning |
+|---|---|
+| `DO NOW` | Item is active with an executable next move. Maps to state `ACTIVE`. |
+| `DO LATER` | Item is parked until a condition, date, dependency, or evidence requirement changes. Maps to state `STANDBY`. |
+| `DISCARD` | Item must not proceed under current state. Maps to state `DISCARDED`. |
+
+<Note>
+The protocol never uses "depends" as a verdict. Uncertainty must become something operational: a reality probe, a parked state with an explicit trigger, a bounded simulation, or a discard condition. Ambiguity is a state input, not a state output.
+</Note>
+
+## Lifecycle States
+
+Each item transitions between the following states as verdicts are assigned, probes are run, and evidence changes.
+
+<AccordionGroup>
+  <Accordion title="DRAFT — Initial state before first verdict">
+    An item enters the batch in `DRAFT`. No verdict has been assigned yet. The kernel processes the item and transitions it out of `DRAFT` in the same run, unless a structural blocking condition prevents processing.
+
+    If a previously `EXPIRED` item reappears in a new batch, it auto-transitions from `EXPIRED` back to `DRAFT` before the kernel evaluates it.
+  </Accordion>
+
+  <Accordion title="ACTIVE — DO NOW verdict assigned">
+    The item has a `DO NOW` verdict and at least one executable next move in `[STEPS]`. The `[NEXT]` field points to the first step the executor should take. The item remains `ACTIVE` until it is closed, falsified, blocked externally, or the verdict changes in a subsequent run.
+  </Accordion>
+
+  <Accordion title="STANDBY — DO LATER verdict assigned">
+    The item is parked. The kernel recorded a trigger that explains why: a dependency is unresolved, external data is required, a resource constraint exists, or the evidence is insufficient to act. The item stays in `STANDBY` until the trigger condition changes or it exceeds its expiry window.
+  </Accordion>
+
+  <Accordion title="PROBING — Reality probe active (sub-state)">
+    `PROBING` is a sub-state that overlays `ACTIVE` or `STANDBY`. It activates when the kernel triggers a reality probe for the item's critical driver. While a probe is active, the verdict is provisional — it cannot be finalized to `CLOSED` until the probe resolves. When the probe returns `VALIDATED`, `FALSIFIED`, or `EXPIRED`, the item transitions out of `PROBING` according to the probe outcome.
+  </Accordion>
+
+  <Accordion title="CLOSED — Decision finalized for now">
+    The item is done for this cycle. No further ping-pong is required. `CLOSED` is only assigned when the decision is explicitly finalized, either through simulated closure (when `ClosePolicy=SIM_OK`) or through real evidence (`ct:REAL`). A `CLOSED` item can only be reopened under strict conditions — see the CLOSED revisit rule below.
+  </Accordion>
+
+  <Accordion title="EXPIRED — STANDBY item past its expiry window">
+    A `STANDBY` item with no updates past its `effective_expire_days` transitions to `EXPIRED`. This is a terminal state for the current batch. The item cannot be advanced in the same run. When the same item id appears in a new batch, it auto-transitions from `EXPIRED` to `DRAFT` and is evaluated fresh.
+  </Accordion>
+
+  <Accordion title="DISCARDED — Item must not proceed">
+    The item has been cut. This happens when a falsification probe contradicts the critical driver, when the fail-fast gate fires twice on the same item, when a higher-priority terminal rule forces discard, or when the operator explicitly submits a `DISCARD` verdict. Steps from a `DISCARDED` item must not be executed.
+  </Accordion>
+</AccordionGroup>
+
+## Expiry Resolution
+
+When a `STANDBY` item has no updates for longer than its effective expiry window, it transitions to `EXPIRED`. The `effective_expire_days` value is resolved in this exact order:
+
+1. **`keep_open=YES`** — no expiry. The item never expires regardless of other settings.
+2. **Item-level `expire_days`** — the per-item wrapper overrides the batch default.
+3. **Batch-level `expire_days`** — the `<<<B>>>` header value applies when no item override exists.
+4. **Domain type defaults** — applied when neither item nor batch sets an expiry:
+
+| Domain Type | Default Expiry |
+|---|---|
+| Chaotic | 1 day |
+| Probabilistic | 7 days |
+| Complex | 60 days |
+| Deterministic | 365 days |
+
+5. **Fallback** — if no domain type is known, the default is **30 days**.
+
+### Expiry Pause Rule
+
+If a `STANDBY` item has an active, non-expired probe adopted for its critical driver, the inactivity counter pauses. The expiry clock does not advance while the probe remains `ACTIVE`. Once the probe resolves — through `VALIDATED`, `FALSIFIED`, or its own TTL expiry — the inactivity counter resumes.
+
+The `[QUEUE]` displays this state as `exp:PAUSED`.
+
+## CLOSED Revisit Rule
+
+A `CLOSED` item can be reopened using the same item id only under these conditions:
+
+- **`ct:REAL`** — requires `<<<NEW_EVIDENCE>>>` with `evidence_tier` in `{HISTORICAL, REAL, EXPERIMENT}`.
+- **`ct:SIM`** — accepts either `<<<NEW_EVIDENCE>>>` (same tiers) or `<<<CHANGE>>>` with a bullet list of observable changes to facts, assumptions, or drivers.
+
+**Budget cap:** At most one reopen is allowed per item id. If `PREV` shows `reopen_total >= 1`, reopening is blocked with `trigger=REOPEN_BLOCKED_BUDGET`, even if valid evidence is provided. If the required evidence or change is missing, the item stays `CLOSED` with `trigger=REOPEN_BLOCKED_NO_DELTA`.
+
+## Terminal Flag
+
+The `term` field in `[QUEUE]` is derived automatically:
+
+- `term=Y` when `new_state` is `CLOSED`, `DISCARDED`, or `EXPIRED`.
+- `term=N` otherwise.
+
+<Note>
+Expired items are not permanently lost. When an expired item id reappears in a new batch, PA_PVP automatically transitions it from `EXPIRED` to `DRAFT` and evaluates it as a fresh submission. If a `<<<PREV>>>` block is provided for that id, the kernel processes it as delta-only continuation.
+</Note>

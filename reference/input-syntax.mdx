@@ -1,0 +1,195 @@
+---
+title: "PA_PVP Input Syntax: Wrappers, Modes, and Evidence"
+sidebarTitle: "Input Syntax"
+description: "Complete reference for all PA_PVP input wrappers: batch headers, item wrappers, input modes (PLAN, ARTIFACT, TOOL+TARGET), evidence objects, and change declarations."
+---
+
+This page is the complete reference for all input constructs PA_PVP accepts. Formal wrappers are optional for simple single-item runs but required for batching, per-item policy, dependencies, and machine-to-machine exchange. For a first run, plain language is enough; add structure only when you need deterministic batching, explicit modes, per-item previous state, or reliable snapshot continuation.
+
+## Batch Header `<<<B>>>`
+
+The batch header sets operating policy for every item in the run. All fields are optional; defaults are shown below.
+
+```text
+<<<B keep_open=NO expire_days=30 exec_capability=NO_RUNTIME close_policy=SIM_OK ssot_scale=MIN resource_pool=>>>
+```
+
+<ParamField query="keep_open" type="NO | YES" default="NO">
+  When set to `YES`, disables expiry for all items in the batch. Per-item `keep_open=YES` also disables expiry for that item alone. Item-level settings override the batch value.
+</ParamField>
+
+<ParamField query="expire_days" type="integer" default="30">
+  Default expiry in days applied to all items. Items in `STANDBY` with no updates transition to `EXPIRED` after this many days. Overridden per-item by the item's own `expire_days` field, or by domain-type defaults when neither the item nor batch specifies a value.
+</ParamField>
+
+<ParamField query="exec_capability" type="NO_RUNTIME | RUNTIME_OK" default="NO_RUNTIME">
+  Whether real execution capability is available. `NO_RUNTIME` means steps are planned but not automatically executed; completions are marked `COMPLETED_SIMULATED`. `RUNTIME_OK` allows real step execution with `COMPLETED` status and exception-class failure tokens.
+</ParamField>
+
+<ParamField query="close_policy" type="SIM_OK | REAL_ONLY" default="SIM_OK">
+  Whether simulated closure is allowed. `SIM_OK` permits `ct=SIM` closures when labeled and confidence caps are applied. `REAL_ONLY` requires `<<<NEW_EVIDENCE evidence_tier=HISTORICAL|REAL|EXPERIMENT>>>` to close an item; without it the item parks in `STANDBY` with `trigger=CLOSE_BLOCKED_REAL_ONLY`.
+</ParamField>
+
+<ParamField query="ssot_scale" type="MIN | DEBUG" default="MIN">
+  Output verbosity. `MIN` emits minimal item structure for simple items; items where `contested=YES` or `dominant_gate != NONE` automatically escalate to full debug structure. `DEBUG` forces full item structure for every item regardless of state.
+</ParamField>
+
+<ParamField query="resource_pool" type="token list" default="">
+  Declared resource pool for concurrency enforcement. Format: `RID:CAPACITY,RID:CAPACITY` (e.g., `ENG:2,GPU:1`). When items declare `uses=` tokens, the kernel enforces that demand does not exceed capacity by demoting lower-priority `ACTIVE` items to `STANDBY`. Leave blank if resource concurrency is not needed.
+</ParamField>
+
+---
+
+## Item Wrapper `<<<I>>>`
+
+Each item in a batch is enclosed in an item wrapper. The payload inside the wrapper uses exactly one input mode.
+
+```text
+<<<I id=E1 title="short title" keep_open=NO expire_days=30 depends_on= uses= reversibility=>>>
+...payload...
+<<<END>>>
+```
+
+<ParamField query="id" type="string" required>
+  Unique item identifier within the batch (e.g., `E1`, `E2`). Required. If an item is missing `id`, it is marked `INVALID_ITEM` and skipped without blocking the rest of the batch. If the same `id` appears twice in a batch, the second occurrence is `DISCARDED` with `trigger=DUPLICATE_ID_REJECTED`.
+</ParamField>
+
+<ParamField query="title" type="string">
+  Short human-readable title for the item. Used in `[USER_PANEL]` and `[HUMAN_TABLE]` for scan readability.
+</ParamField>
+
+<ParamField query="keep_open" type="NO | YES" default="NO">
+  Overrides the batch `keep_open` value for this item only. When `YES`, the item never expires regardless of batch policy.
+</ParamField>
+
+<ParamField query="expire_days" type="integer">
+  Overrides the batch `expire_days` value for this item only. If not set, the effective expiry resolves from the batch value, domain-type defaults, or the fallback of 30 days — in that priority order.
+</ParamField>
+
+<ParamField query="depends_on" type="comma-separated id list">
+  Other item ids this item depends on. Dependencies are execution-order constraints, not automatic verdict blockers. If any dependency is not `CLOSED` or `DISCARDED`, the item's ping-pong stays `OPEN` and Step 1 priority applies. A dependency cycle among batch items causes all cycle members to receive `verdict=DO LATER`, `trigger=CIRCULAR_DEPENDENCY`, and a cycle-breaking step as Step 1.
+</ParamField>
+
+<ParamField query="uses" type="resource token list">
+  Resource usage tokens for this item (e.g., `ENG:1,GPU:1`). Matched against the batch `resource_pool` for concurrency enforcement. Omit if resource constraints are not relevant.
+</ParamField>
+
+<ParamField query="reversibility" type="REVERSIBLE | IRREVERSIBLE | blank">
+  Declares the reversibility of the action. When set to `IRREVERSIBLE`, the closure tier is forced to `REAL` — simulated closure is not allowed, and the item parks in `STANDBY` with `trigger=CLOSE_BLOCKED_REAL_ONLY` until real evidence is provided. Also affects `ds=SLOW` in the queue and hedge action eligibility.
+</ParamField>
+
+---
+
+## Input Modes
+
+Every item uses exactly one input mode declared inside the item wrapper.
+
+### `<<<PLAN>>>`
+
+```text
+<<<PLAN>>>
+- bullet list of actions/options OR numbered steps
+```
+
+Provides a plan or set of options for pressure-testing. Before any review, the kernel enforces the **FAIL-FAST SNR gate**: the plan must expose at minimum a goal state, a system boundary, and a hard constraint. When SNR is too low:
+
+- With `CopyPasteMode=NO_LOOK` or `AskUserMode=NONE`: the kernel auto-derives the three minimal specs as `SIMULATED` and continues.
+- With `CopyPasteMode=MANUAL` and `AskUserMode=ALLOW`: the kernel asks for minimal specs and stops for that item (`new_state=DRAFT`).
+- If `fail_fast_count` reaches 2 for the same item id: `verdict=DISCARD`, `trigger=FAIL_FAST_CUT` — no further analysis or questions.
+
+### `<<<ARTIFACT>>>`
+
+```text
+<<<ARTIFACT>>>
+<prompt/file/protocol/code/doc/etc>
+```
+
+Provides a prompt, document, protocol, code sample, specification, or any other artifact for adversarial audit. The kernel applies the **ARTIFACT AUDIT CONTRACT**, producing `[ARTIFACT_AUDIT]` (completeness, coherence, operationality checks, top defects, top deltas) and `[AUDIT_EXACT]` (single highest-impact defect, minimal patch, verification step).
+
+### `<<<TOOL>>>` + `<<<TARGET>>>`
+
+```text
+<<<TOOL>>>
+<the analysis tool, standard, or checklist>
+<<<TARGET>>>
+<the artifact to audit or optimize>
+```
+
+Named evaluation mode: the declared tool audits the declared target. Roles do not invert — the tool is always the evaluator and the target is always the subject. The kernel applies the same ARTIFACT AUDIT CONTRACT obligations as `<<<ARTIFACT>>>` mode. Use this when you want to name a specific framework, standard, or checklist as the lens.
+
+### `<<<PREV>>>`
+
+```text
+<<<PREV>>>
+<previous [ITEM id=...] block for this item>
+```
+
+Provides the previous per-item machine state for delta-only continuation. The `<<<PREV>>>` payload must contain only the matching `[ITEM id=...]` block from the prior output — exclude the global `[PANEL]`, `[QUEUE]`, and other items' blocks. When `<<<PREV>>>` is present, the kernel outputs only `[DERIVED]`, `[DELTA]`, `[VERDICT_UPDATE]` (if changed), `[STEPS]`, and `[NEXT]` for that item.
+
+<Note>
+For normal snapshot continuation, prefer **SNAPSHOT_AS_INPUT**: paste the entire previous valid PA_PVP output and the kernel auto-recovers per-item PREV blocks. No manual cutting or editing required. `<<<PREV>>>` is for multi-item batches where you need fine-grained control over which items continue and which start fresh.
+</Note>
+
+---
+
+## Evidence and Change
+
+### `<<<NEW_EVIDENCE>>>`
+
+```text
+<<<NEW_EVIDENCE evidence_tier=HISTORICAL|REAL|EXPERIMENT>>>
+<evidence payload: logs, measurements, outcomes, citations>
+```
+
+Provides real evidence for an item. Required to reopen a `CLOSED` item and to satisfy `ClosePolicy=REAL_ONLY` or `reversibility=IRREVERSIBLE` closure requirements.
+
+<ParamField query="evidence_tier" type="HISTORICAL | REAL | EXPERIMENT" required>
+  Declares the quality tier of the evidence being provided.
+
+  | Tier | Description |
+  |---|---|
+  | `HISTORICAL` | Past observations from external sources |
+  | `REAL` | Current real-world measurement or direct observation |
+  | `EXPERIMENT` | Controlled experiment or probe result |
+
+  Only these three tiers qualify for real closure (`ct=REAL`). SIMULATED and DERIVED tiers are kernel-internal and cannot be declared via `<<<NEW_EVIDENCE>>>`.
+</ParamField>
+
+Reopen budget: an item may be reopened at most once per item id. If `reopen_total >= 1` in the previous state, reopening is blocked with `trigger=REOPEN_BLOCKED_BUDGET` even when evidence is provided.
+
+### `<<<CHANGE>>>`
+
+```text
+<<<CHANGE>>>
+- observable change to facts, assumptions, or drivers (bullet list)
+```
+
+Declares observable changes to facts, assumptions, or decision drivers. Allowed as an alternative trigger to revisit `SIMULATED`-closed items (`ct=SIM`). Cannot reopen `REAL`-closed items (`ct=REAL`) — those require `<<<NEW_EVIDENCE>>>`.
+
+---
+
+## Special Commands
+
+These commands are NOT wrapped in `<<<I>>>` items. They operate over a previously-emitted snapshot, not as new decision inputs.
+
+### `REPORT <snapshot>`
+
+```text
+REPORT
+<paste the full prior PA_PVP snapshot here>
+```
+
+Produces a full derived report from the pasted snapshot: per-item panels, steps, and mechanical metrics where derivable. No code block is emitted. Verdicts, gates, triggers, steps, and facts are not changed.
+
+### `REPORT LITE <snapshot>`
+
+```text
+REPORT LITE
+<paste the full prior PA_PVP snapshot here>
+```
+
+Produces a one-page scan-first summary: item counts, DO NOW list, top blockers, and per-item next token where executable. No code block is emitted.
+
+<Note>
+`REPORT` and `REPORT LITE` are **read-only render passes** over an existing snapshot — they are not kernel decision runs. Do not wrap them in `<<<I>>>` items. They emit no `STATE:` header and produce no machine state that can be reused as `<<<PREV>>>` or `SNAPSHOT_AS_INPUT`. If the pasted snapshot is missing or its `[PANEL]` contains `OutputValidity: INVALID`, the kernel outputs `ERROR: missing or invalid snapshot` and stops.
+</Note>

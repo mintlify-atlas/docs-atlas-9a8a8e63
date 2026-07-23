@@ -1,0 +1,110 @@
+---
+title: "When to Use PA_PVP for Decision Making"
+sidebarTitle: "When to Use"
+description: "PA_PVP excels at converting uncertainty into operational decisions — plans, architecture choices, artifact reviews, and blocked projects with too many possible moves."
+---
+
+PA_PVP is designed for situations where a plan or choice keeps sounding plausible without becoming operational. If you can describe the next action clearly, you probably do not need a decision protocol. But when a plan has unresolved dependencies, an artifact has untested assumptions, a choice between options has no clear winner, or a project has stalled because every move looks equally reasonable — PA_PVP converts that uncertainty into a forced verdict, an executable next step, and a reusable state you can carry into the next run.
+
+<CardGroup cols={2}>
+  <Card
+    title="Plans that need pressure-testing"
+    icon="rocket"
+    href="/quickstart"
+  >
+    An implementation plan looks viable but you are not sure the dependencies, rollback path, or hard constraints are strong enough. PA_PVP exposes the highest-impact weakness and tells you whether to proceed, park, or discard.
+  </Card>
+  <Card
+    title="Architecture or procurement choices"
+    icon="code-branch"
+    href="/concepts/verdicts-and-lifecycle"
+  >
+    Two or more options are technically viable with different cost, risk, and reversibility trade-offs. PA_PVP closes the decision or identifies the smallest probe needed to break the tie.
+  </Card>
+  <Card
+    title="Artifacts needing adversarial review"
+    icon="magnifying-glass"
+    href="/quickstart"
+  >
+    A prompt, protocol, document, specification, or code sample needs structural review. PA_PVP audits the artifact, breaks the highest-impact weakness, and proposes a minimal patch.
+  </Card>
+  <Card
+    title="Projects with too many possible moves"
+    icon="list-check"
+    href="/quickstart"
+  >
+    The project is not blocked — it has too many equally plausible next moves. PA_PVP prioritizes by impact and urgency, surfaces the dominant gate, and names one concrete next action.
+  </Card>
+  <Card
+    title="Decisions blocked by weak evidence"
+    icon="flask"
+    href="/concepts/verdicts-and-lifecycle"
+  >
+    The critical driver has low confidence and external data is required. PA_PVP converts this into a bounded probe, a parking state, or a simulated closure — whichever produces the best information ROI without fabricating missing sources.
+  </Card>
+  <Card
+    title="Reversible experiments with a kill condition"
+    icon="rotate-left"
+    href="/concepts/verdicts-and-lifecycle"
+  >
+    You want to run a time-boxed experiment but need a declared kill switch, a representativeness check, and an exit condition. PA_PVP structures the probe with all required fields and wires it to the item's falsification debt.
+  </Card>
+  <Card
+    title="Continuing a previous run"
+    icon="arrows-rotate"
+    href="/quickstart"
+  >
+    You already have a valid PA_PVP snapshot from a prior run. Paste it back as input — no editing required. The kernel recovers item state automatically and produces a delta-only update focused on what changed.
+  </Card>
+</CardGroup>
+
+## PA_PVP scales to the situation
+
+PA_PVP does not produce the same output volume regardless of what you give it. The output budget is state-dependent.
+
+A low-impact or clearly reversible choice stays compact: `[PANEL]`, `[QUEUE]`, and a minimal item surface are sufficient. The kernel does not expand into full diagnostic structure unless the item warrants it.
+
+A contested, gated, high-impact, or evidence-sensitive decision can expand into gates, probes, debt tracking, and evidence-bound closure. When an item's critical driver has low confidence, the protocol may open `falsification_debt`, start a reality probe, require a hedge action with a declared risk cap, or move the item into `PROBING` state — all based on the item's own conditions, not on prompt length or user preference.
+
+This means two items in the same batch can produce very different output surfaces: one compact, one fully diagnostic. The controlling factor is the item's impact, urgency, evidence quality, contestation status, and dominant gate — not the number of words in the input.
+
+## What PA_PVP is NOT
+
+<Note>
+Understanding these boundaries prevents misuse and sets accurate expectations for what a run can and cannot produce.
+
+- **Not a brainstorming prompt.** PA_PVP is a decision-state protocol. It converges toward a closed verdict — it does not generate open-ended option lists or explore possibilities without closing them.
+- **Not a software runtime or autonomous agent.** PA_PVP is a text protocol. Real execution depends on the AI host, available tools, permissions, and external systems. The protocol structures decisions and steps; it does not run code or call APIs.
+- **Not a guarantee of correctness.** PA_PVP does not guarantee that any decision is legally, financially, medically, or technically correct. The underlying model may not follow every instruction perfectly, and simulated evidence may not match real-world outcomes.
+- **Not a replacement for real evidence when `ClosePolicy=REAL_ONLY`.** When a decision is irreversible or explicitly configured to require real evidence, PA_PVP will not close it on simulation alone. It will park the item, open a probe, or declare it blocked — but it will not fabricate evidence or silently lower the evidence standard.
+</Note>
+
+## Input types and recommended modes
+
+Use this table to match your situation to the appropriate PA_PVP input mode:
+
+| Situation | Recommended Mode |
+|---|---|
+| Implementation plan to validate | `PLAN` |
+| System prompt, document, protocol, or code to audit | `ARTIFACT` |
+| Applying a specific evaluation framework or checklist | `TOOL + TARGET` |
+| Continuing a previous run | Paste the full snapshot — no wrappers needed |
+
+For a first run, plain language is enough regardless of mode. The kernel routes your input automatically. Use formal wrappers (`<<<I id=E1 ...>>>`, `<<<PLAN>>>`, `<<<ARTIFACT>>>`, `<<<TOOL>>>`, `<<<TARGET>>>`) when you need deterministic batching, explicit mode assignment, per-item dependencies, declared reversibility, or machine-to-machine exchange.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Load the protocol, activate it, and run your first decision in 60 seconds.
+  </Card>
+  <Card
+    title="Input Modes Reference"
+    icon="code"
+    href="/concepts/input-modes"
+  >
+    Explore PLAN, ARTIFACT, TOOL + TARGET, and snapshot continuation with full syntax examples.
+  </Card>
+</CardGroup>

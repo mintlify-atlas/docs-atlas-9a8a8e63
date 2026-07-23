@@ -1,47 +1,99 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with PA_PVP in 60 Seconds"
+sidebarTitle: "Quickstart"
+description: "Load the PA_PVP canonical protocol into any LLM, describe your situation in plain language, and get a forced verdict with a concrete next action."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+PA_PVP requires no installation, no SDK, and no API keys. The entire protocol is a single `.txt` file that you provide to an AI system as context or a system prompt. Once the protocol is loaded and activated, you describe your situation in plain language — or using formal wrappers for batched runs — and the AI applies the decision kernel and returns a forced verdict, one executable next action, and a machine-readable snapshot.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Load the canonical protocol">
+    Open the canonical protocol file from the repository and provide it to the AI system you are using. You can paste it as a system prompt, prepend it to your conversation, or use whatever context-injection method your AI host supports.
 
-    ```bash
-    npm install your-package
-    ```
+    The canonical file is:
+
+    [PA_PVP\_full\_v9.9.0\_canonical.txt](https://github.com/xxyoudeadpunkxx/pa_pvp-a-plutonium-like-adversarial-peer-validation-protocol/blob/main/PA_PVP_full_v9.9.0_canonical.txt)
+
+    This file is the source of truth for all output format rules, routing logic, decision-kernel semantics, and lifecycle behavior. When anything in external documentation conflicts with the canonical file, the canonical file governs.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Activate the protocol">
+    After providing the canonical file, send the following activation instruction to the AI:
+
+    ```text
+    Use PA_PVP as the active decision protocol for the next input. Follow its output contract exactly.
     ```
+
+    This tells the AI to apply the PA_PVP kernel — including its output format, verdict logic, and state structure — to whatever input follows. Without this instruction, the AI may read the protocol file as reference material rather than an active execution contract.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="Describe your situation">
+    You can start in plain language. PA_PVP will parse your situation, identify the decision or artifact, and apply the appropriate mode automatically. Here are four example prompts — one per common scenario:
+
+    ```text
+    This implementation plan looks plausible, but I am not sure the dependencies and rollback path are strong enough. Use PA_PVP to pressure-test it and give me the next action.
+
+    Audit this artifact with PA_PVP. Break the highest-impact weakness and patch it minimally.
+
+    I have two viable options and no clear winner. Use PA_PVP to close the decision or identify the smallest probe needed.
+
+    Continue this PA_PVP state and advance its current NEXT step:
+    <paste the previous PA_PVP snapshot here>
     ```
+
+    <Tip>
+      Start with plain language on your first run. Formal input wrappers (`<<<I id=E1 ...>>>`, `<<<PLAN>>>`, `<<<ARTIFACT>>>`) are available when you need deterministic batching, explicit modes, per-item dependencies, or machine-to-machine exchange — but they are not required to get a valid result.
+    </Tip>
+  </Step>
+
+  <Step title="Read the result">
+    The response has two distinct output surfaces:
+
+    **Machine state** — a single code block beginning with `STATE: DECISION.TEST.FINAL`. This is the reusable snapshot. Every field inside this block is part of the machine state and can be pasted back as input for the next run.
+
+    **Human view** — a markdown table rendered after the code block. This is a derived read-only view of the `[QUEUE]` contents. It is useful for quick scanning but is not machine state and should not be used as input.
+
+    A valid result looks like this:
+
+    ```text
+    STATE: DECISION.TEST.FINAL
+
+    [QUEUE]
+    E1 | DRAFT->ACTIVE | DO NOW | HIGH | HIGH | ds:OK | term:N | ct:- | pp:OPEN | exp:30 | gate:NONE | S1
+
+    [NEXT]
+    S1: REVIEW rollback plan -> confirm reversibility | timebox<=30m | fail_if=no documented rollback path
+    ```
+
+    The `[QUEUE]` line gives you the verdict (`DO NOW`), impact and urgency (`HIGH | HIGH`), execution mode (`ds:OK`), closure tier (`ct:-`), expiry (`exp:30` days), the dominant gate (`gate:NONE`), and the first step token (`S1`). The `[NEXT]` section expands that step into a full observable action with a timebox and a fail condition.
+
+    <Warning>
+      If the state header `STATE: DECISION.TEST.FINAL` is missing from the output, the output is non-operational. Do not execute its steps or use it as machine state. Similarly, if `[PANEL]` reports `OutputValidity: INVALID`, treat the entire output as diagnostic only — do not paste it back as a snapshot for the next run.
+    </Warning>
+  </Step>
+
+  <Step title="Continue from the previous run">
+    PA_PVP is designed for repeated runs. To continue where you left off, paste the entire previous output — the full code block including `STATE: DECISION.TEST.FINAL` and everything inside it — back as your next input. No manual editing or extraction is required.
+
+    This is `CopyPasteMode=NO_LOOK`: the kernel automatically recovers item state from the pasted snapshot and produces a delta-only update, focusing on what changed, what broke, and the smallest patch that advances the decision. You do not need to re-describe your situation or restructure the input.
+
+    Each continuation produces exactly one `[BREAK]` (the highest-impact weakness or changed driver) and one `[PATCH]` (the minimal fix with the best information return on investment). The verdict, lifecycle state, and evidence bindings are updated based only on what actually changed.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<CardGroup cols={2}>
+  <Card
+    title="When to Use PA_PVP"
+    icon="list-check"
+    href="/when-to-use"
+  >
+    See the full range of scenarios where PA_PVP converts uncertainty into an operational decision.
+  </Card>
+  <Card
+    title="Verdicts and Lifecycle"
+    icon="rotate"
+    href="/concepts/verdicts-and-lifecycle"
+  >
+    Understand how items move through DRAFT, ACTIVE, STANDBY, PROBING, CLOSED, and DISCARDED states.
+  </Card>
+</CardGroup>

@@ -1,0 +1,77 @@
+---
+title: "Hedge Actions: Proceeding Under Unresolved Uncertainty"
+sidebarTitle: "Hedge Actions"
+description: "A hedge action lets PA_PVP proceed with a reversible action under unresolved critical driver uncertainty when cost of delay is high — with explicit debt and a parallel probe."
+---
+
+A hedge action is a controlled advance under uncertainty. When waiting for evidence exceeds the opportunity window and cost of delay is HIGH, PA_PVP can authorize a bounded, reversible action while a parallel reality probe runs. The hedge does not resolve the uncertainty — it acknowledges it explicitly through Falsification Debt and a declared risk cap, then proceeds within those constraints. The item stays in PROBING state throughout the hedge; it does not close until the probe resolves. This makes every hedge legible in the output: operators can see the open debt, the parallel probe, and the declared risk cap at a glance.
+
+## When a hedge action is allowed
+
+<Warning>
+  A hedge action requires **all** of the following conditions to hold simultaneously. Meeting some but not all is not sufficient.
+
+  - **Cost of Delay is HIGH** — waiting is more expensive than the risk of proceeding
+  - **Waiting for data exceeds the opportunity window** — the evidence cannot arrive before the window closes
+  - **The action is reversible OR risk-contained** — an irreversible action with unbounded risk cannot be hedged
+  - **A risk cap is declared** — the maximum acceptable loss must be stated explicitly in the item
+  - **A parallel Reality Probe is started** — the probe must target the same critical driver that is unresolved
+  - **Falsification Debt is declared** — `falsification_debt = OPEN(critical_driver)` is recorded in `[ITEM_PANEL]`
+</Warning>
+
+## What a hedge action is NOT
+
+A hedge is not a way to skip evidence requirements, and it is not a final decision. While a hedge is active:
+
+- The item stays in **PROBING** state — not ACTIVE, not CLOSED
+- `[ITEM_PANEL]` records `hedge_action: ACTIVE`
+- Execution mode is `ds=SLOW`
+- The item carries open Falsification Debt
+
+The hedge is a time-bounded exception that runs until the probe resolves. It does not grant the item a "DO NOW" verdict while bypassing governance — it proceeds under explicit, tracked constraints.
+
+## Hedge exit condition
+
+A hedge terminates automatically when either of the following is true:
+
+- `probe.status` is `VALIDATED` or `FALSIFIED`, OR
+- The decision transitions to `CLOSED`, `EXPIRED`, or `DISCARDED`
+
+When the hedge terminates:
+
+- The item moves **out of PROBING** — transitioning to ACTIVE, STANDBY, or DISCARDED as appropriate based on the probe result
+- If the probe is `FALSIFIED`: the Falsification Principle applies and the item is DISCARDED with `trigger=FALSIFICATION`
+- If the probe is `VALIDATED`: the item can transition to ACTIVE (if Cost of Delay remains HIGH) or STANDBY pending full evidence
+- Debt clears or persists **strictly by the debt rules** — there are no manual exceptions to debt clearing after hedge termination
+
+<Note>
+  For full details on when Falsification Debt opens, closes, and how it affects routing and confidence, see the [Falsification Debt](/advanced/falsification-debt) page.
+</Note>
+
+## Truth-or-Dare rule
+
+The Truth-or-Dare rule governs what happens when a critical driver has LOW confidence, external data is required, but Cost of Delay is **not** HIGH (meaning a hedge action is not justified):
+
+**Default — `AskUser=OFF`:**
+- Do not request external data
+- Either simulate the best internal probe available (`evidence_tier=SIMULATED`), OR
+- Park the item in STANDBY with `trigger=EXTERNAL_DATA_REQUIRED`
+
+**If `AskUser=ON`:**
+- Ask for the minimal external evidence as the single AskUser question, but only if AskUser activation rules allow it (the item must be non-terminal, externally blocked, and meet at least one of: `ClosePolicy=REAL_ONLY`, `reversibility=IRREVERSIBLE`, or `spent_internal=YES`)
+
+If external data is required but unavailable and no internal probe can move the critical uncertainty enough to proceed, blind-risk acceptance is required and Falsification Debt is opened explicitly. The protocol does not proceed silently without labeling the gap.
+
+## FRAGILITY gate
+
+When a decision score is within 5 points of an impact threshold, the item is classified as **fragile** and receives additional governance:
+
+- **FULL profile:** Score in range 35–45 (near the 40 threshold) or 65–75 (near the 70 threshold)
+- **DIY profile:** Raw score in `{0, 1, 3, 4}` (on a boundary between impact buckets)
+
+When fragility applies:
+
+- If **Cost of Delay is not HIGH**: the item is treated as PROBING — it cannot close in this run, and a probe targeting the critical driver is prioritized
+- If **Cost of Delay is HIGH**: a Hedge Action is allowed with a declared risk cap, a parallel probe, and open Falsification Debt — but the item **stays PROBING, not CLOSED**
+
+In both cases, `trigger=FRAGILITY` is set (unless a higher-priority trigger already governs the item). The fragility gate prevents borderline decisions from drifting into CLOSED while their scoring is genuinely ambiguous.

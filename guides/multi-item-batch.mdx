@@ -1,0 +1,89 @@
+---
+title: "Processing Multiple Decisions in a Single PA_PVP Batch"
+sidebarTitle: "Multi-Item Batch"
+description: "Submit multiple decision items in one PA_PVP run — with shared policy, per-item overrides, dependency declarations, and resource concurrency controls."
+---
+
+PA_PVP supports multi-item batches where several plans, artifacts, or choices are processed in a single run with a shared policy. Each item receives its own verdict, its own `[NEXT]` action, and its own machine-readable state block — while sharing a batch-level configuration for expiry, close policy, and resource constraints. This is useful for triage sessions, architecture reviews, or sequential decision chains where items depend on each other.
+
+## When to use batching
+
+Batching is the right approach when you have more than one decision to evaluate and the items share context or constraints. Common use cases:
+
+- **Backlog triage** — submit several candidate items and let PA_PVP sort them into DO NOW, DO LATER, and DISCARD with priority ordering
+- **Architecture review** — evaluate multiple design options in parallel and compare their verdicts and dominant gates in a single pass
+- **Decisions with explicit dependencies** — declare that item E2 depends on item E1 so the protocol enforces the right execution order
+- **AI-to-AI exchange** — multi-item batches with `<<<PREV>>>` per item enable structured peer validation across several active decisions in one round-trip
+
+## Complete batch example
+
+The batch header sets the shared policy for all items. Per-item attributes override or extend the batch defaults.
+
+```text
+<<<B keep_open=NO expire_days=30 exec_capability=NO_RUNTIME close_policy=SIM_OK ssot_scale=MIN resource_pool=ENG:2>>>
+
+<<<I id=E1 title="Select database" keep_open=NO expire_days=30 reversibility=REVERSIBLE uses=ENG:1>>>
+<<<PLAN>>>
+- Option A: Postgres — proven, team has experience, requires migration from current MySQL
+- Option B: MySQL — keep current, no migration cost, lacks JSON query features we need
+<<<END>>>
+
+<<<I id=E2 title="Define API schema" keep_open=NO expire_days=30 depends_on=E1 uses=ENG:1>>>
+<<<PLAN>>>
+- Design REST endpoints for user, order, and product resources
+- Use OpenAPI 3.0 spec format
+- API schema must reflect the chosen database's capabilities
+<<<END>>>
+```
+
+In this example:
+- The batch declares a shared resource pool of `ENG:2` (two engineering slots available)
+- E1 requests `ENG:1` and is fully independent — it will be evaluated immediately
+- E2 requests `ENG:1` and declares `depends_on=E1` — it will remain open until E1 is resolved
+- Both items use the batch default of `expire_days=30` and `close_policy=SIM_OK`
+
+## Reading a batch result
+
+The output contains a single `STATE: DECISION.TEST.FINAL` code block. The most efficient scan path for a batch is:
+
+1. **`[USER_PANEL]`** — read the `Now`, `Later`, and `Cut` lists for a quick orientation across all items, plus `TopGates` for the most significant systemic blockers
+2. **`[QUEUE]`** — one row per item showing verdict, impact, urgency, execution mode (`ds`), terminal flag, closure tier, dominant gate, and `step1` token
+3. **`[ITEM id=...]` blocks** — each item's full decision output, including `[NEXT]`, `[STEPS]`, `[ITEM_PANEL]`, and (when applicable) `[ARTIFACT_AUDIT]`
+
+Execute items in impact and urgency order (highest first), respecting `depends_on` constraints. Items where `term=Y` in `[QUEUE]` are closed or discarded and require no action.
+
+## Dependency handling
+
+Dependencies between items are declared with `depends_on` in the item wrapper. The protocol enforces execution order without blocking evaluation of independent items.
+
+- **E2 depends on E1**: E2 stays ping-pong `OPEN` until E1 is `CLOSED` or `DISCARDED`. E2's Step 1 will direct you to resolve the blocking dependency — or explicitly waive it with declared debt.
+- **Waiving a dependency**: if you proceed without waiting for E1 to close, PA_PVP treats the waiver as blind-risk acceptance. It caps `critical_driver_confidence` to `LOW` for E2, opens `falsification_debt`, and adds a parallel probe step to reduce the uncertainty caused by the waiver.
+- **Circular dependencies**: if item A declares `depends_on=B` and item B declares `depends_on=A`, both receive `DO LATER` with `trigger=CIRCULAR_DEPENDENCY`. Step 1 for both items will be a cycle-breaking action — split into separate decision and execution items, remove a `depends_on` edge, or explicitly waive one dependency.
+
+## Continuing a batch
+
+Paste the entire previous output back. No manual extraction is required.
+
+```text
+Continue this PA_PVP state:
+<paste the previous PA_PVP output here>
+```
+
+PA_PVP detects the `STATE: DECISION.TEST.FINAL` header, auto-recovers `<<<PREV>>>` for each `[ITEM id=...]` block present in the snapshot, and processes each item as delta-only continuation. Items in terminal states (`CLOSED`, `DISCARDED`) are preserved in `[QUEUE]` but receive no new steps.
+
+If you have new evidence for a specific item, include it in the continuation:
+
+```text
+<<<I id=E1 title="Select database">>>
+<<<PLAN>>>
+<updated or original plan>
+<<<NEW_EVIDENCE evidence_tier=REAL>>>
+Team confirmed Postgres migration is feasible in one sprint. No blockers identified.
+<<<END>>>
+
+<paste the rest of the previous PA_PVP output here>
+```
+
+<Tip>
+  For advanced batch configuration including resource pool definitions, dependency waiver debt tracking, and per-item expiry overrides, see the [Batch and Dependencies reference](/advanced/batch-and-dependencies).
+</Tip>

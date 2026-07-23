@@ -1,0 +1,86 @@
+---
+title: "PA_PVP Input Modes: PLAN, ARTIFACT, and TOOL+TARGET"
+sidebarTitle: "Input Modes"
+description: "PA_PVP supports three structured input modes — PLAN for steps and options, ARTIFACT for auditing content, and TOOL+TARGET for applying named evaluation frameworks."
+---
+
+Each item submitted to PA_PVP uses exactly one input mode. The mode determines how the protocol routes and processes the item — whether it enforces a signal-to-noise gate, performs a structural artifact audit, or applies a named evaluation method to a target. Choosing the right mode keeps the kernel on the shortest path to a verdict and an executable next step.
+
+<Tabs>
+  <Tab title="PLAN">
+    **Use this mode for:** bullet lists of actions or options, numbered implementation steps, or anything that represents a plan to pressure-test before execution.
+
+    The protocol enforces a **FAIL-FAST SNR (signal-to-noise ratio) gate** before any review. A valid plan must expose at least three elements:
+
+    - A **goal state** — what done looks like.
+    - A **system boundary** — what is in scope and what is not.
+    - A **hard constraint** — a limit the plan cannot violate.
+
+    If the plan is too noisy (SNR too low), the kernel does not stop or ask for clarification. With `CopyPasteMode=NO_LOOK` (the default), it auto-derives minimal specifications as `SIMULATED` and continues. If the fail-fast gate fires twice for the same item id, the kernel escalates to `FAIL_FAST_CUT` and discards the item.
+
+    ```text
+    <<<I id=E1 title="My plan">>>
+    <<<PLAN>>>
+    - Step 1: do X
+    - Step 2: do Y
+    <<<END>>>
+    ```
+  </Tab>
+
+  <Tab title="ARTIFACT">
+    **Use this mode for:** prompts, documents, protocols, code samples, specifications, or any artifact that needs adversarial review and structural optimization.
+
+    In `ARTIFACT` mode, the protocol does **not** ask for a plan. It performs a structural audit of the artifact using the **ARTIFACT AUDIT CONTRACT**, producing an `[ARTIFACT_AUDIT]` block that includes:
+
+    - `artifact_type`: the classified type (`PROTOCOL`, `PROMPT`, `CODE`, `DOC`, `CONFIG`, or `OTHER`).
+    - `audit_1_completeness`: whether required sections and fields exist for the artifact's claimed purpose.
+    - `audit_2_coherence`: whether the artifact is free of contradictions, orphan references, and circular self-validation.
+    - `audit_3_operationality`: whether the artifact can be applied deterministically with clear gates and invariants.
+    - `top_defects`: up to 5 highest cost-benefit defects.
+    - `top_deltas`: up to 5 minimal fixes ordered by net benefit or information ROI.
+
+    An `[AUDIT_EXACT]` block accompanies the audit with a single highest-impact defect, a minimal structural patch, and one executable verification step.
+
+    ```text
+    <<<I id=E1 title="My system prompt">>>
+    <<<ARTIFACT>>>
+    You are a helpful assistant...
+    <<<END>>>
+    ```
+  </Tab>
+
+  <Tab title="TOOL + TARGET">
+    **Use this mode for:** applying a named evaluation method, standard, checklist, or framework to a specific target artifact.
+
+    In `TOOL + TARGET` mode, the tool audits the target. Roles do not invert — the tool is the evaluation method and the target is the artifact being evaluated. The kernel routes the item as `mode=TARGET` and applies the same `[ARTIFACT_AUDIT]` output contract as `ARTIFACT` mode.
+
+    ```text
+    <<<I id=E1 title="Security audit">>>
+    <<<TOOL>>>
+    OWASP Top 10 checklist
+    <<<TARGET>>>
+    <your API spec or code>
+    <<<END>>>
+    ```
+  </Tab>
+</Tabs>
+
+## Snapshot as Input
+
+A pasted PA_PVP output snapshot is **previous state**, not a new `PLAN` payload. When the raw input contains a `PREV_SNAPSHOT` with no `<<<I>>>` wrappers, the kernel auto-recovers per-item `<<<PREV>>>` blocks for each detected `[ITEM id=...]` and processes each as delta-only ping-pong. No manual editing, cutting, or extraction is needed — this is the `CopyPasteMode=NO_LOOK` default.
+
+See the [Continuation & Snapshots](/concepts/continuation-and-snapshots) page for full routing rules.
+
+## Plain Language
+
+For a first run, plain language is enough. Formal wrappers (`<<<I>>>`, `<<<B>>>`, `<<<PLAN>>>`, etc.) are for:
+
+- **Deterministic batching** — processing multiple items in one run with explicit ids.
+- **Explicit modes** — forcing `ARTIFACT` or `TOOL + TARGET` routing.
+- **Per-item previous state** — providing `<<<PREV>>>` for delta-only continuation of specific items.
+- **Dependency declarations** — `depends_on=` and `uses=` fields on item wrappers.
+- **Machine-to-machine exchange** — passing structured state between AI systems.
+
+<Warning>
+`REPORT` and `REPORT LITE` are special commands — they are **not** kernel decision runs. They are read-only render passes over a valid snapshot and must **not** be wrapped in `<<<I>>>` items. If the first non-empty line of the input is exactly `REPORT` or `REPORT LITE`, the kernel routes it as a derived report: no code block, no state header, no verdict changes, no new steps.
+</Warning>

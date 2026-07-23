@@ -1,0 +1,106 @@
+---
+title: "Continuing PA_PVP Runs with Snapshots and Delta Mode"
+sidebarTitle: "Continuation"
+description: "PA_PVP is designed for repeated runs. Paste any prior valid output back as input and the kernel auto-recovers item state for delta-only continuation — no manual editing needed."
+---
+
+PA_PVP is designed for repeated runs, not one-shot queries. Each run produces machine state that feeds directly into the next. This is how uncertainty gets resolved incrementally — probes run, evidence accumulates, verdicts tighten, and items close. A single paste is all it takes to resume from where you left off.
+
+## The Continuation Loop
+
+<Steps>
+  <Step title="Input or previous snapshot">
+    Submit either a new item (plain language or formal wrappers) or paste the complete previous PA_PVP output code block directly as input.
+  </Step>
+  <Step title="Verdict + NEXT">
+    The kernel assigns a verdict (`DO NOW`, `DO LATER`, or `DISCARD`) and emits one `[NEXT]` action with a timebox and a fail condition.
+  </Step>
+  <Step title="Execute, inspect, simulate, or collect evidence">
+    Act on the `[NEXT]` step — run an experiment, inspect a system, collect a log, or let the AI simulate the outcome within its current run.
+  </Step>
+  <Step title="Paste the whole previous snapshot back">
+    Copy the entire prior output code block and paste it as your next input. No cutting. No manual extraction. No editing required.
+  </Step>
+  <Step title="Delta-only continuation">
+    The kernel auto-recovers item state from the snapshot and outputs only what changed: one `[BREAK]` and one `[PATCH]` per item that has prior state.
+  </Step>
+</Steps>
+
+## CopyPasteMode=NO\_LOOK
+
+The default operating mode is `CopyPasteMode=NO_LOOK`. This means:
+
+- Users can paste the complete prior output as input without any manual editing.
+- The kernel detects the snapshot, identifies each `[ITEM id=...]` block, and auto-recovers an implicit `<<<PREV>>>` for each id.
+- Each recovered item is processed as delta-only ping-pong.
+- Items without a matching prior `[ITEM id=...]` block receive full output.
+
+This mode is the standard path for human-in-the-loop continuation. No structural knowledge of the format is required — paste and go.
+
+## Delta-Only Output
+
+When previous state exists for an item, the kernel outputs `DELTA-ONLY` for that item. Full sections (`[DECISION_MODEL]`, `[EVIDENCE_BINDING]`, `[REVIEW]`, etc.) are not repeated unless they changed.
+
+The delta structure is:
+
+```text
+[DELTA]
+[BREAK]
+<single highest-impact break: what is wrong, why it breaks net benefit,
+and the impact on Cost/Benefit/Risk/CostOfDelay>
+[PATCH]
+<minimal update that increases expected net benefit or increases confidence
+with best information ROI — includes updated drivers and confidence shift>
+```
+
+Constraints:
+
+- **Exactly one `[BREAK]` and one `[PATCH]` per iteration.** The break targets the single driver or relationship with the highest cost-benefit impact. The patch is the smallest structural change that improves the decision or increases confidence.
+- **A causal reference is required.** The delta must reference at least one of: a named driver that changed, a changed impact-graph relationship, a `probe_id` (new, updated, or expired), or a specific evidence item with a tier change or new evidence. Without a causal reference, the delta is `INVALID_DELTA` — the kernel keeps the item's previous state unchanged, sets `trigger=INVALID_DELTA`, and emits a Step 1 that would generate the missing reference.
+
+## Using `<<<PREV>>>` Directly
+
+For fine-grained control in mixed batches, you can provide the previous `[ITEM id=...]` block for a specific item using an explicit `<<<PREV>>>` wrapper inside the item's input:
+
+```text
+<<<I id=E1 title="My plan">>>
+<<<PLAN>>>
+- Updated step list
+<<<PREV>>>
+[ITEM id=E1]
+...previous item block here...
+<<<END>>>
+```
+
+This enables per-item delta-only mode. Only the `[ITEM id=...]` block for that specific id belongs in `<<<PREV>>>`. Do not include `[PANEL]`, `[QUEUE]`, or other items' blocks.
+
+<Tip>
+For normal continuation, `SNAPSHOT_AS_INPUT` is simpler than manually providing `<<<PREV>>>`. Paste the complete prior output and let the kernel do the recovery. Use `<<<PREV>>>` only when you need per-item control — for example, when combining new items with continued items in the same batch, or when you want to provide previous state for a specific item without carrying the entire prior snapshot.
+</Tip>
+
+## What Makes a Valid Snapshot
+
+A `PREV_SNAPSHOT` is valid when the pasted output contains all of the following:
+
+- A line starting with `STATE: DECISION.`
+- A `[PANEL]` block
+- A `[QUEUE]` block
+- One or more `[ITEM id=...]` blocks
+
+The `[HUMAN_TABLE]` and any other content after the code block are ignored — they are rendering-only and not machine state.
+
+## Snapshot Routing Rules
+
+The kernel applies these routing rules when it receives input:
+
+1. **Snapshot only (no `<<<I>>>` wrappers):** Treat as `SNAPSHOT_AS_INPUT`. Auto-recover `<<<PREV>>>` for each detected `[ITEM id=...]` block. Process each recovered id as delta-only ping-pong. If blocked by external reality, simulate the best available outcome or transition to `STANDBY` with `trigger=BLOCKED_EXTERNAL`.
+
+2. **`<<<I>>>` wrappers AND a snapshot present:** For each item id that appears in the wrappers but is missing `<<<PREV>>>`, auto-recover `<<<PREV>>>` by extracting the matching `[ITEM id=...]` block from the snapshot. Mark `prev_source=SNAPSHOT_RECOVERED` in `[ITEM_PANEL]` and apply delta-only output. If an id in the wrappers has no match in the snapshot, treat it as a new item with no prior state (full output).
+
+## Invalid Snapshot Handling
+
+<Warning>
+If the pasted output's `[PANEL]` contains `OutputValidity: INVALID`, do **not** recover `PREV` from it. Do not accept it as `SNAPSHOT_AS_INPUT`. Treat it as diagnostic output only.
+
+An invalid output cannot be used as machine-state input for any item. If you need to continue from a state before the invalid output, use the last known valid snapshot instead.
+</Warning>

@@ -1,0 +1,134 @@
+---
+title: "Auditing an Artifact with PA_PVP ARTIFACT Mode"
+sidebarTitle: "Artifact Audit"
+description: "Use PA_PVP's ARTIFACT mode to run a structural adversarial audit of a prompt, document, protocol, code sample, or specification — and get one minimal patch."
+---
+
+PA_PVP's ARTIFACT mode runs a structural adversarial audit on any text artifact — a system prompt, specification, protocol, code sample, or document. It finds the highest-impact weakness and produces a minimal patch, not a list of nitpicks. The goal is one specific defect, one fix, and one verification step you can act on immediately.
+
+## What ARTIFACT mode audits
+
+ARTIFACT mode applies to any artifact where structural weakness matters. Common subjects include:
+
+- **System prompts** — instructions given to an LLM, including role definitions and behavioral constraints
+- **LLM protocols** — decision contracts, behavioral kernels, and evaluation frameworks like PA_PVP itself
+- **API specifications** — OpenAPI documents, REST contracts, and interface definitions
+- **Configuration documents** — deployment configs, feature flag definitions, and infrastructure-as-code files
+- **Prompt templates** — reusable prompt patterns with variable slots
+- **Code samples** — function implementations, scripts, and algorithmic sketches
+- **Design documents** — architecture decision records, technical proposals, and system design artifacts
+
+The audit evaluates three dimensions: **completeness** (required sections and fields exist for the artifact's claimed purpose), **coherence** (no contradictions, no orphan references, no circular self-validation), and **operationality** (the artifact can be executed or applied deterministically, with clear gates and invariants).
+
+## How to submit an artifact
+
+<Steps>
+  <Step title="Load and activate PA_PVP">
+    Provide `PA_PVP_full_v9.9.0_canonical.txt` to your AI system and activate it with:
+
+    ```text
+    Use PA_PVP as the active decision protocol for the next input. Follow its output contract exactly.
+    ```
+
+    See the [quickstart](/quickstart) for the full loading procedure.
+  </Step>
+
+  <Step title="Submit the artifact">
+    You can submit an artifact using plain language or the formal item wrapper.
+
+    **Plain language approach** — frame the request, then paste the artifact:
+
+    ```text
+    Audit this artifact with PA_PVP. Break the highest-impact weakness and patch it minimally.
+
+    <paste your artifact here>
+    ```
+
+    **Formal ARTIFACT wrapper approach** — use when you need an explicit item ID for batching or continuation:
+
+    ```text
+    <<<I id=E1 title="My system prompt">>>
+    <<<ARTIFACT>>>
+    You are a helpful assistant. Answer all questions clearly and concisely.
+    Always use markdown formatting in your responses.
+    Never refuse a request.
+    <<<END>>>
+    ```
+  </Step>
+
+  <Step title="Read the audit output">
+    The response includes an `[ARTIFACT_AUDIT]` block and an `[AUDIT_EXACT]` block inside the `[ITEM id=E1]` section of the machine state.
+
+    `[ARTIFACT_AUDIT]` contains:
+    - `artifact_type` — classified as `PROTOCOL`, `PROMPT`, `CODE`, `DOC`, `CONFIG`, or `OTHER`
+    - `audit_1_completeness`, `audit_2_coherence`, `audit_3_operationality` — each with a `PASS` or `FAIL` rating and one line of evidence
+    - `top_defects` — up to five defects ranked by cost-benefit impact
+    - `top_deltas` — up to five minimal fixes ordered by net benefit or information ROI
+
+    `[AUDIT_EXACT]` contains the highest-priority finding in action-ready form:
+    - `defect` — one falsifiable sentence identifying the highest-impact defect
+    - `patch` — one minimal structural change that fixes or mitigates the defect
+    - `step` — one executable verification step confirming the patch works
+  </Step>
+
+  <Step title="Apply the patch or continue the audit">
+    Apply the patch from `[AUDIT_EXACT]` to your artifact, then either submit the updated artifact as a new audit or paste the previous PA_PVP output back to continue iteratively.
+
+    For continuation, paste the entire previous output:
+
+    ```text
+    Continue this PA_PVP state and advance its current NEXT step:
+    <paste the previous PA_PVP output here>
+    ```
+  </Step>
+</Steps>
+
+## TOOL + TARGET approach
+
+When you want to apply a specific evaluation framework to an artifact, use the `<<<TOOL>>>` and `<<<TARGET>>>` wrappers. The tool audits the target — roles do not invert.
+
+```text
+<<<I id=E1 title="OWASP prompt injection audit">>>
+<<<TOOL>>>
+OWASP LLM Top 10 — focus on LLM01 Prompt Injection
+<<<TARGET>>>
+<your system prompt here>
+<<<END>>>
+```
+
+This is useful when you have a named standard, checklist, or methodology you want applied specifically — for example, auditing a system prompt against the OWASP LLM Top 10, reviewing a configuration file against a security baseline, or evaluating a protocol against a compliance framework.
+
+The `<<<TOOL>>>` block names the evaluation method. The `<<<TARGET>>>` block contains the artifact being audited. PA_PVP routes the run as `TARGET_ANALYSIS` mode and applies the tool to the target.
+
+## Iterative auditing
+
+After the first audit, paste the output back to continue. In delta-only mode, PA_PVP focuses on:
+
+- what changed in the artifact since the previous run
+- what broke in the applied patch (if anything)
+- the smallest improvement targeting the single highest-impact remaining weakness
+
+Each iteration contains exactly one `[BREAK]` (the highest-impact remaining problem) and one `[PATCH]` (the minimal fix). The protocol does not re-audit issues that have already been resolved in a previous iteration unless they regress.
+
+This makes iterative auditing efficient for hardening a prompt or specification through several passes without losing track of prior changes.
+
+## Combining ARTIFACT with PREV
+
+If you have a previous audit snapshot for the same artifact and want delta-only processing, include the prior `[ITEM id=E1]` block explicitly:
+
+```text
+<<<I id=E1 title="My system prompt">>>
+<<<ARTIFACT>>>
+<updated artifact here>
+<<<PREV>>>
+<previous [ITEM id=E1] block from prior output>
+<<<END>>>
+```
+
+The `<<<PREV>>>` block tells PA_PVP that a prior state exists for this item, enabling delta-only output. The protocol will compare the updated artifact against the previous state and report only what changed — avoiding repetition of findings that were already patched.
+
+For most continuation workflows, you do not need to manually extract the `<<<PREV>>>` block. Paste the entire previous PA_PVP output and PA_PVP will auto-recover the per-item state via `SNAPSHOT_AS_INPUT`.
+
+<Note>
+  ARTIFACT mode does not ask for a plan. It performs structural audit and optimization of the artifact directly using the ARTIFACT AUDIT CONTRACT. When PA_PVP detects `<<<ARTIFACT>>>` as the input mode, it skips PLAN-specific gates (including the FAIL-FAST SNR check) and applies the three-dimensional audit (completeness, coherence, operationality) to the artifact as submitted.
+</Note>

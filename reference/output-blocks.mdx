@@ -1,0 +1,300 @@
+---
+title: "PA_PVP Output Blocks: PANEL, QUEUE, ITEM, and Tables"
+sidebarTitle: "Output Blocks"
+description: "Reference for every block in a PA_PVP machine output: [USER_PANEL], [PANEL], [QUEUE], [ITEM id=...], [HUMAN_TABLE], and optional derived tables."
+---
+
+Every valid PA_PVP decision run emits exactly one machine code block containing these blocks in a fixed order, followed by derived human-readable tables outside the code block. The code block is the reusable machine state; the tables are derived views only. If the `STATE: DECISION.TEST.FINAL` header is missing from the code block, or if `[PANEL]` contains `OutputValidity: INVALID`, the output is non-operational and must not be reused as machine state.
+
+The section order inside the code block is fixed:
+
+```text
+STATE: DECISION.TEST.FINAL
+
+[USER_PANEL]
+[PANEL]
+[QUEUE]
+[RECOVERY_INPUT]   ← optional, only when explicitly requested
+[ITEM id=...]      ← one per item, in input order
+```
+
+---
+
+## `[USER_PANEL]`
+
+Present in every output. Derived solely from `[PANEL]`, `[QUEUE]`, and per-item `[NEXT]` lines. Adds no new semantics and contains no instruction that requires the human to edit input to proceed.
+
+| Field | Description |
+|---|---|
+| `BatchID` | Stable batch identifier from `[PANEL]` |
+| `SummaryCounts` | Single line combining `StatusCounts + VerdictCounts + ImpactCounts` |
+| `TopGates` | Up to 5 systemic blockers derived from `[QUEUE]` gate tokens only, ordered by impact HIGH→LOW, then new_state ACTIVE/PROBING first, then id lexical |
+| `Now` | Comma-separated ids where `verdict=DO NOW` |
+| `Later` | Comma-separated ids where `verdict=DO LATER` |
+| `Cut` | Comma-separated ids where `verdict=DISCARD` |
+| `NextActions` | Up to 5 lines, each formatted as `<id>: <NEXT step output token>` |
+
+When `[PANEL]` contains `OutputValidity: INVALID`, `[USER_PANEL]` is reduced to diagnostics derived from `[PANEL]` only and contains only `BatchID`, `OutputValidity`, and `InvalidReason`. It does not require `[QUEUE]` or per-item summaries in that case.
+
+---
+
+## `[PANEL]`
+
+Global batch metadata for the run. Required in every output.
+
+### Standard fields
+
+| Field | Values | Default |
+|---|---|---|
+| `Protocol` | `PA_PVP` | `PA_PVP` |
+| `SSOT_STATUS` | Compact active-module manifest (see below) | — |
+| `ExecCapability` | `NO_RUNTIME` \| `RUNTIME_OK` | `NO_RUNTIME` |
+| `ClosePolicy` | `SIM_OK` \| `REAL_ONLY` | `SIM_OK` |
+| `SSOTScale` | `MIN` \| `DEBUG` | `MIN` |
+| `AskUserMode` | `NONE` \| `ALLOW` | `NONE` |
+| `AskUser` | `NONE` or `<id>: <one minimal evidence request>` | `NONE` |
+| `CopyPasteMode` | `NO_LOOK` \| `MANUAL` | `NO_LOOK` |
+
+Optional fields that may appear in valid outputs include `ResourcePool`, `BatchID`, `Items` (total count), `InputInventory`, `StatusCounts`, `PingPongCounts`, `VerdictCounts`, `ImpactCounts`, and `Governance`.
+
+### SSOT_STATUS manifest
+
+The `SSOT_STATUS` line is a compact active-module manifest. All modules below are `ACTIVE` by default; `SNRGate` uses `ENFORCED_PLAN_ONLY` to indicate it applies only to PLAN-mode items.
+
+```text
+SSOT_STATUS: InteropLayer=ACTIVE Batch=ACTIVE PingPong=ACTIVE Scoring=ACTIVE
+  Lifecycle=ACTIVE Debt=ACTIVE RealityProbe=ACTIVE RepresentativenessLite=ACTIVE
+  HedgeAction=ACTIVE TruthOrDare=ACTIVE AlternativeSearch=ACTIVE
+  EvidenceQualityTier=ACTIVE Contestation=ACTIVE Dependencies=ACTIVE
+  OutputConsumerContract=ACTIVE DomainExpiryDefaults=ACTIVE ProbeTTL=ACTIVE
+  ExpiryPauseWithActiveProbe=ACTIVE MissingRatingsHandling=ACTIVE
+  ArtifactMode=ACTIVE TargetAnalysisMode=ACTIVE SNRGate=ENFORCED_PLAN_ONLY
+```
+
+### Invalid-only fields
+
+These fields appear **only** when `OutputValidity: INVALID`. They must be omitted from valid outputs.
+
+| Field | Values | Notes |
+|---|---|---|
+| `OutputValidity` | `INVALID` | Emitted only when output is non-operational |
+| `InvalidReason` | `BATCH_COVERAGE` \| `CODE_BLOCK_PURITY` \| `PREV_SURFACE` \| `OTHER` | Exactly one token |
+| `CoverageDiff` | `missing={id1,id2}; extra={id3}` | Only when `InvalidReason=BATCH_COVERAGE` |
+
+An output with `OutputValidity: INVALID` must not be used as `<<<PREV>>>` or `SNAPSHOT_AS_INPUT`.
+
+---
+
+## `[QUEUE]`
+
+The execution scan surface. One line per item in the batch. This is the authoritative source for `[HUMAN_TABLE]` and `[USER_PANEL]`.
+
+### Format
+
+```text
+id | prev_state->new_state | verdict | impact | urgency | ds:OK/SLOW/NO_TOOL | term:Y/N | ct:SIM/REAL/- | pp:OPEN/CLOSED | exp:VALUE | gate:<TAG> | step1
+```
+
+### Column reference
+
+| Column | Description |
+|---|---|
+| `id` | Item id from the input wrapper |
+| `prev_state->new_state` | State transition, e.g., `DRAFT->ACTIVE` |
+| `verdict` | `DO NOW` \| `DO LATER` \| `DISCARD` |
+| `impact` | `LOW` \| `MED` \| `HIGH` |
+| `urgency` | `LOW` \| `MED` \| `HIGH` |
+| `ds` | Derived execution mode: `OK` \| `SLOW` \| `NO_TOOL` |
+| `term` | Terminal flag: `Y` if `new_state` in `{CLOSED, DISCARDED, EXPIRED}`; else `N` |
+| `ct` | Closure tier: `SIM` (simulated), `REAL` (evidence-backed), or `-` (not closed) |
+| `pp` | Ping-pong state: `OPEN` (item has `<<<PREV>>>` or is non-terminal); `CLOSED` (terminal state) |
+| `exp` | Effective expiry: integer days, `NONE` (keep_open=YES), or `PAUSED` (active probe pauses clock) |
+| `gate` | Dominant gate tag from `[ITEM_PANEL].dominant_gate` |
+| `step1` | First step token from `[STEPS]` |
+
+### `ds` derivation rules
+
+The execution mode (`ds`) is derived deterministically from short fields:
+
+- `ds=NO_TOOL` if `verdict=DISCARD`, `trigger=FAIL_FAST_CUT`, or (`impact=LOW` AND `new_state != PROBING`)
+- `ds=SLOW` if any of: `new_state=PROBING`, `contested=YES`, `missing_ratings=YES`, `falsification_debt != NONE`, `hedge_action=ACTIVE`, `reversibility=IRREVERSIBLE`, or (domain is Complex/Chaotic AND `critical_driver_confidence` is LOW/VERY_LOW)
+- `ds=OK` otherwise
+
+---
+
+## `[ITEM id=...]`
+
+One block per item, in input order. Contains sub-blocks according to the item's mode, profile, and whether `<<<PREV>>>` exists.
+
+### Sub-blocks when `<<<PREV>>>` exists (delta-only surface)
+
+When `<<<PREV>>>` is present, only these sub-blocks are emitted. No other item-level blocks may appear.
+
+| Sub-block | Required |
+|---|---|
+| `[DERIVED]` | Always |
+| `[DELTA]` | Always |
+| `[VERDICT_UPDATE]` | Only if verdict changed |
+| `[STEPS]` | Always |
+| `[NEXT]` | If state is not terminal |
+
+### Sub-blocks when no `<<<PREV>>>` exists
+
+The emitted set depends on profile (DIY vs FULL), impact, and per-item scale (MIN vs DEBUG).
+
+**MIN surface** (DIY profile or `impact=LOW`, and `new_state != PROBING`):
+
+| Sub-block | Notes |
+|---|---|
+| `[ITEM_PANEL]` | Always |
+| `[DERIVED]` | Base fields; counters optional |
+| `[STEPS]` | Always |
+| `[PROBE_LOG]` | Only if FULL profile and `falsification_debt != NONE` and probe entries exist |
+| `[ARTIFACT_AUDIT]` + `[AUDIT_EXACT]` | ARTIFACT/TARGET mode only |
+| `[NEXT]` | Always |
+
+**DEBUG surface** (`ssot_scale=DEBUG` or `contested=YES` or `dominant_gate != NONE`):
+
+| Sub-block | Notes |
+|---|---|
+| `[ITEM_PANEL]` | Always |
+| `[DERIVED]` | Always |
+| `[STEPS]` | Always |
+| `[ARTIFACT_AUDIT]` + `[AUDIT_EXACT]` | ARTIFACT/TARGET mode only |
+| `[DECISION_MODEL]` | Always |
+| `[EVIDENCE_BINDING]` | Always |
+| `[DATA_ACQUISITION]` | Always |
+| `[ALTERNATIVE]` | Conditional |
+| `[PROBE]` | Conditional |
+| `[PROBE_LOG]` | If any probe exists for the item |
+| `[REVIEW]` | Max 3 failure modes |
+| `[NEXT]` | Always |
+
+### `[ITEM_PANEL]` key fields
+
+| Field | Description |
+|---|---|
+| `id`, `title` | Item identity |
+| `mode` | `PLAN` \| `ARTIFACT` \| `TARGET` |
+| `profile` | `DIY` \| `FULL` |
+| `domain_type` | `Deterministic` \| `Probabilistic` \| `Complex` \| `Chaotic` |
+| `state` | `prev_state` and `new_state` |
+| `verdict` | `DO NOW` \| `DO LATER` \| `DISCARD` |
+| `impact` | `LOW` \| `MED` \| `HIGH` |
+| `urgency` | `LOW` \| `MED` \| `HIGH` |
+| `critical_driver` | Single string — the driver with highest impact on the score |
+| `critical_driver_confidence` | `HIGH` \| `MED` \| `LOW` \| `VERY_LOW` (derived, capped by evidence tier and governance) |
+| `falsification_debt` | `NONE` or `OPEN(driver_name)` |
+| `dominant_gate` | One tag from the gate vocabulary (see [Gates & Triggers](/reference/gates-and-triggers)) |
+| `reversibility` | `REVERSIBLE` \| `COSTLY_REVERSIBLE` \| `IRREVERSIBLE` (if provided in input) |
+| `keep_open` | `YES` \| `NO` |
+| `expire_days` | Effective value for this item |
+| `reopen_total` | Integer count of times this item has been reopened (anti-loop memory) |
+| `trigger` | Primary rule that determined the decision state; `NONE` if no rule-specific trigger |
+
+### `[STEPS]`
+
+Executable steps in the following grammar (maximum 5 steps):
+
+```text
+S{n}: <OBSERVABLE_VERB> <OBJECT> -> <OUTPUT> | timebox<=<N>m | fail_if=<OBSERVABLE_CONDITION>
+```
+
+Every step must: declare an explicit output, declare a timebox, declare an observable failure condition, and perform at least one of: reduce uncertainty on the critical driver, reduce risk/cost/time materially, or resolve a blocking dependency. Steps are ordered by Step 1 priority rules — see [Gates & Triggers](/reference/gates-and-triggers).
+
+### `[NEXT]`
+
+A single pointer to the next executable action. Must match exactly one emitted step in `[STEPS]` — it cannot introduce a new action. In `STANDBY` state, `[NEXT]` may be emitted as a "next planned action on revive" and may be non-executable in the current run.
+
+### `[DELTA]`
+
+Appears only in delta-only mode (when `<<<PREV>>>` exists). Contains exactly one `[BREAK]` and one `[PATCH]` per iteration.
+
+- `[BREAK]`: targets the single driver or relationship with the highest cost-benefit impact. Explains what is wrong, why it breaks net benefit, and its impact on Cost/Benefit/Risk/CostOfDelay.
+- `[PATCH]`: applies the minimal update that increases expected net benefit or increases confidence with best information ROI.
+
+The delta must reference at least one causal anchor: a named driver that changed, a changed impact-graph relationship, a `probe_id`, or a specific evidence item. Without a causal reference, the delta is `INVALID_DELTA` and the item's state is not advanced.
+
+---
+
+## `[HUMAN_TABLE]`
+
+A standard markdown table placed **after** the code block. Derived only from `[QUEUE]` lines. Not machine state — `SNAPSHOT_AS_INPUT` ignores it.
+
+```text
+| id | verdict | impact | urgency | ds | term | ct | gate | state | exp | next |
+```
+
+| Column | Source |
+|---|---|
+| `id` | Item id |
+| `verdict` | From `[QUEUE]` |
+| `impact` | From `[QUEUE]` |
+| `urgency` | From `[QUEUE]` |
+| `ds` | From `[QUEUE]` |
+| `term` | From `[QUEUE]` |
+| `ct` | From `[QUEUE]` |
+| `gate` | From `[QUEUE]` |
+| `state` | `prev_state->new_state` from `[QUEUE]` |
+| `exp` | From `[QUEUE]` |
+| `next` | `[QUEUE]` `step1` token, or `(none)` |
+
+---
+
+## Optional Derived Tables
+
+These tables appear after `[HUMAN_TABLE]` when applicable. All are derived-only views; `SNAPSHOT_AS_INPUT` ignores them.
+
+### `[HUMAN_TABLE_OPS]`
+
+Extended operations table for triage. Columns:
+
+```text
+| pri | item | verdict | driver | gate | ct | evid | conf | debt | probe | load | next |
+```
+
+| Column | Derivation |
+|---|---|
+| `pri` | `P1..Pn` for DO NOW non-terminal items (ordered by impact, urgency, ds, then id); `CUT` for DISCARD; `DONE` for `term=Y`; `LATER` for DO LATER |
+| `item` | Item id |
+| `verdict` | From `[QUEUE]` |
+| `driver` | `[ITEM_PANEL].critical_driver` |
+| `gate` | From `[QUEUE]` |
+| `ct` | Compact: `SIM` / `REAL` / `-` |
+| `evid` | `[DERIVED].best_evidence_tier` |
+| `conf` | `[ITEM_PANEL].critical_driver_confidence` |
+| `debt` | `CAP` if `gate=DEBT_CEILING`; open debt value if `falsification_debt` starts with `OPEN(`; else `-` |
+| `probe` | `pc<N> nm<N> inc<N>` from `[DERIVED].counters`, plus last probe status code in `(V/F/I/X/A)` |
+| `load` | `tb=<used>/<budget> cx=<score>/<budget>` from counters; `-` if counters missing |
+| `next` | Token after `->` in `step1`, or the step token as-is |
+
+An optional footer after this table emits up to 3 derived lines: `ACTIONS` (DO NOW items in pri order), `WATCH` (ids where `gate=REDESIGN_TRIGGER` or `nm>=2`), and `WAITING` (ids where `gate=EXTERNAL_BLOCK`).
+
+### `[RISK_DASHBOARD]`
+
+Batch-level risk aggregation. Shows only items where `critical_driver_confidence` is `VERY_LOW` or `LOW`, grouped by `critical_driver`. Columns:
+
+```text
+| driver | low_conf | impact_w | items | debt | gates |
+```
+
+| Column | Derivation |
+|---|---|
+| `driver` | `[ITEM_PANEL].critical_driver` |
+| `low_conf` | Count of items in the group |
+| `impact_w` | Sum of per-item impact weights (HIGH=3, MED=2, LOW=1) |
+| `items` | Up to 5 ids ordered by impact then urgency then id; `+N` if more |
+| `debt` | `CAP` if any item has `gate=DEBT_CEILING`; `OPEN` if any item has open debt; else `-` |
+| `gates` | Up to 3 unique gate values from `[QUEUE]` for the group (excluding `NONE`), `+N` if more |
+
+Rows ordered by `impact_w` descending, then `low_conf` descending, then driver lexical.
+
+---
+
+## `[RECOVERY_INPUT]`
+
+Optional. Emitted only when explicitly requested by the operator. Contains input wrappers (`<<<B>>>`, `<<<I>>>`, `<<<PLAN>>>`, `<<<PREV>>>`, `<<<END>>>`) that can be pasted into the next run to re-run the batch. Each `<<<PREV>>>` within it contains only the prior `[ITEM id=...]` block for that same id.
+
+<Note>
+Prefer `SNAPSHOT_AS_INPUT` in normal no-look workflows. Pasting the complete prior output is simpler and requires no manual extraction. `[RECOVERY_INPUT]` is useful when you want a clean, pre-assembled input for the next run without carrying forward the full prior output.
+</Note>

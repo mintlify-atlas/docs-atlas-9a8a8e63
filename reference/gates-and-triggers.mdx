@@ -1,0 +1,219 @@
+---
+title: "PA_PVP Gates and Triggers: Routing and Governance"
+sidebarTitle: "Gates & Triggers"
+description: "Reference for all PA_PVP dominant gates and triggers — the governance signals that route items through probing, debt tracking, redesign, and discard paths."
+---
+
+Gates and triggers are the governance signals in PA_PVP's decision kernel. Each item derives exactly one `dominant_gate` — the highest-priority condition active in that run. Triggers explain why an item is in its current state. The gate is diagnostic and routing-oriented; it must not invent semantics beyond the kernel rules. `dominant_gate` appears in `[ITEM_PANEL]` and is mirrored in the `[QUEUE]` `gate` column.
+
+---
+
+## Dominant Gates
+
+Gates are derived by applying the `DOMINANT_GATE_MAP` to the item's active trigger. Exactly one gate is emitted per item. The derivation follows strict precedence — the highest-priority matching condition wins.
+
+<Accordion title="FAIL_FAST_CUT — Plan SNR too low, item discarded">
+
+**Precedence:** 1 (highest)
+
+**Trigger condition:** `fail_fast_count` reaches 2 for a `<<<PLAN>>>` item, meaning the signal-to-noise ratio was too low on two consecutive runs.
+
+**What happens:** The item receives `verdict=DISCARD` and transitions to `DISCARDED`. No further analysis or questions are emitted for this item.
+
+**How to resolve:** Provide a plan with a clear goal state, a system boundary, and a hard constraint. If only one of these is missing, the kernel auto-derives it as `SIMULATED` on the first fail (when `CopyPasteMode=NO_LOOK` or `AskUserMode=NONE`) and increments `fail_fast_count`. Reaching count 2 is terminal.
+
+**Trigger tag:** `FAIL_FAST_CUT`
+
+</Accordion>
+
+<Accordion title="FALSIFICATION — Probe contradicts critical driver">
+
+**Precedence:** 2
+
+**Trigger condition:** A reality probe has `status=FALSIFIED` AND `context_match=YES` AND `representativeness=HIGH` for the item's `critical_driver`.
+
+**What happens:** `verdict=DISCARD` immediately. The item transitions to `DISCARDED`. This is the Falsification Principle — a representative, context-matched probe that falsifies the critical driver ends the item unconditionally.
+
+**How to resolve:** Falsification is terminal under current state. The only path forward is a new item with a genuinely different critical driver, approach, or scope — not a rerun of the same item.
+
+**Trigger tag:** `FALSIFICATION`
+
+</Accordion>
+
+<Accordion title="DEBT_CEILING — Active falsification debt limit reached">
+
+**Precedence:** 3
+
+**Trigger condition:** The batch has 2 active debt drivers already occupied (the maximum), and the current item would open debt on a third distinct critical driver.
+
+**What happens:** The item cannot receive `verdict=DO NOW`. It is forced to `PROBING` or `STANDBY`. The item's `falsification_debt` is set to `NONE` for this run (debt blocked by ceiling). The item stays blocked until one of the two active debt drivers clears (confidence reaches MED or higher, or the driving item closes/expires/discards).
+
+**How to resolve:** Clear one of the two active debt drivers. The blocked item's `[NEXT]`, if emitted, names the active debt driver that must clear before revive. If the item can be redesigned or split to avoid opening a third debt driver, that redesign step is the earliest non-conflicting step.
+
+**Trigger tag:** `DEBT_CEILING`
+
+</Accordion>
+
+<Accordion title="FRAGILITY — Decision score near impact threshold">
+
+**Precedence:** 4
+
+**Trigger condition:**
+- **FULL profile:** Score is within 5 points of an impact threshold — specifically in the ranges 35–45 (near the 40 boundary) or 65–75 (near the 70 boundary).
+- **DIY profile:** Raw score is on a boundary — `Raw` in `{0, 1, 3, 4}`.
+
+**What happens:** When `FRAGILE_SCORE=TRUE` and `impact` is not LOW, the item is treated as `PROBING`. The kernel prioritizes an internal simulation or probe targeting the critical driver. The item is not finalized to `CLOSED` in this run unless the probe resolves the boundary. If Cost of Delay is HIGH, a Hedge Action is allowed (with risk cap, parallel probe, and declared debt), but the item remains `PROBING` — not `CLOSED`.
+
+**How to resolve:** Run a probe or simulation that moves the score clearly above or below the fragile zone, or accept hedge conditions. A FULL-profile item near 40 or 70 that resolves its critical driver probe can be finalized in the subsequent run.
+
+**Trigger tag:** `FRAGILITY`
+
+</Accordion>
+
+<Accordion title="DEPENDENCY_BLOCK — Unresolved dependency or resource overload">
+
+**Precedence:** 5
+
+**Trigger conditions (any one):**
+- `depends_on` contains ids not yet `CLOSED` or `DISCARDED`.
+- Resource demand exceeds pool capacity, causing the item to be demoted from `ACTIVE`.
+- `required_source_missing=YES` and the source is not identifiable or no bounded acquisition path exists.
+- `trigger=CIRCULAR_DEPENDENCY`, `REOPEN_BLOCKED_NO_DELTA`, `REOPEN_BLOCKED_BUDGET`, `DUPLICATE_ID_REJECTED`, or `MISSING_SOURCE_INPUT`.
+
+**What happens:** The item receives `verdict=DO LATER` and transitions to `STANDBY`. Step 1 resolves the blocking condition — breaks the dependency, waits for resource availability, acquires the missing source, or accepts waiver debt.
+
+**How to resolve:** Close or discard the blocking dependency items, free up resources, acquire the missing source, or explicitly waive the dependency (which opens `falsification_debt` and caps `critical_driver_confidence` to LOW).
+
+**Trigger tag:** `DEPENDENCY_BLOCK`
+
+</Accordion>
+
+<Accordion title="CONFIDENCE_CAP — Critical driver confidence too low">
+
+**Precedence:** 6
+
+**Trigger condition:** `critical_driver_confidence` is `LOW` or `VERY_LOW`, derived deterministically from evidence tier, domain type, and probe governance caps. Applies when declared confidence exceeds the allowed cap for the evidence tier/domain combination.
+
+**What happens:** Confidence is downgraded to the cap value. The item enters `PROBING` (or explicitly `DISCARD`) — it cannot receive `verdict=DO NOW` without a probe step targeting the critical driver, unless the Probe executability constraint forces dependency blocking instead. Step 1 (when priorities 1–2 are not active) is a Reality Probe or Data Acquisition step.
+
+**How to resolve:** Acquire higher-tier evidence (REAL or EXPERIMENT) or run a representative probe that validates or falsifies the critical driver. For Deterministic domains, a proof/check/test with a binary pass/fail outcome can substitute.
+
+**Trigger tag:** `CONFIDENCE_CAP_APPLIED`
+
+</Accordion>
+
+<Accordion title="EXTERNAL_BLOCK — Item blocked by external reality">
+
+**Precedence:** 7
+
+**Trigger conditions:** `trigger` is `BLOCKED_EXTERNAL`, `EXTERNAL_DATA_REQUIRED`, or `CLOSE_BLOCKED_REAL_ONLY`.
+
+**What happens:** The item parks in `STANDBY`. With `AskUserMode=ALLOW`, the item may be eligible for the single per-output `AskUser` question. With `AskUserMode=NONE`, the kernel either simulates the best available outcome (`evidence_tier=SIMULATED` with confidence caps) or parks the item until external reality is provided.
+
+**How to resolve:** Provide the required external data via `<<<NEW_EVIDENCE>>>`, or set `AskUser=ON` so the kernel can request the minimal evidence it needs.
+
+**Trigger tag:** `BLOCKED_EXTERNAL` | `EXTERNAL_DATA_REQUIRED` | `CLOSE_BLOCKED_REAL_ONLY`
+
+</Accordion>
+
+<Accordion title="REDESIGN_TRIGGER — Probe harness requires redesign">
+
+**Precedence:** 8
+
+**Trigger conditions (any one):**
+- `probe_cycle_total (pc) >= 2` AND critical driver confidence still LOW/MED AND evidence tier still SIMULATED/DERIVED.
+- The same critical uncertainty is MED for 2 consecutive iterations with no evidence tier upgrade.
+- `INCONCLUSIVE` repeats 2 times in a row for the same `target_driver`.
+- `OVERRIDE_REPR(owner)` is used more than once inside the tracking window for the same item.
+- `near_miss_total (nm) >= 2` AND `best_evidence_tier` is SIMULATED or DERIVED.
+- `trigger=CIRCULAR_DEPENDENCY`, `INVALID_DELTA`, `PROBE_STALL_CONTEXT_MATCH`, or `MULTI_CRITICAL_DRIVER_SPLIT`.
+- Timebox or complexity budget exceeded with `impact != LOW`.
+
+**What happens:** The next output follows redesign selection: (A) redesign the probe if at least one observable proxy, metric, kill-switch, or `constraint_signature` can be changed without external data; (B) split the decision if multiple independent drivers exist; (C) park `STANDBY` if no bounded path exists; (D) `DISCARD` only if a higher-priority rule already forces it. A redesign is valid only if the new probe changes at least one of `decision_context_metric`, `constraint_signature`, or `kill_switch.condition` compared to the previous state.
+
+**How to resolve:** Change the probe design — pick a different observable metric, update the constraint signature, or redesign the kill-switch. If the same design repeats, it is treated as `INCONCLUSIVE` with no progress.
+
+**Trigger tag:** `REDESIGN_TRIGGER`
+
+</Accordion>
+
+<Accordion title="SCORE_TRIAGE — Explicit score/impact routing signal">
+
+**Precedence:** 9
+
+**Trigger condition:** Score or impact is the *only* active reason changing priority, queue position, or verdict — no blocking or governance trigger is active.
+
+**What happens:** The item is routed or prioritized differently based on its score/impact bucket. This gate does not expand output scale on its own.
+
+**How to resolve:** No special resolution needed. This gate is informational. It signals that the item's placement in the queue is driven by score/impact, not by a governance constraint.
+
+<Note>
+`SCORE_TRIAGE` is a reserved signal for explicit score/impact routing only. Do not set it as a reason to increase output size or to signal general uncertainty. If any blocking or governance trigger is active, that trigger's gate takes precedence.
+</Note>
+
+</Accordion>
+
+<Accordion title="NONE — No governance condition active">
+
+**Precedence:** 10 (lowest)
+
+**Trigger condition:** No governance condition is active for this item.
+
+**What happens:** The item proceeds normally. Its verdict is driven by expected net benefit, and its output scale follows `ssot_scale` and profile settings.
+
+</Accordion>
+
+---
+
+## Trigger Values
+
+Triggers are the primary rule tags that flow into `dominant_gate` derivation via the `DOMINANT_GATE_MAP`.
+
+| Trigger | Meaning |
+|---|---|
+| `FAIL_FAST_CUT` | Plan SNR too low; item discarded after `fail_fast_count` reaches 2 |
+| `FALSIFICATION` | A representative, context-matched probe falsified the critical driver |
+| `DEBT_CEILING` | Falsification debt ceiling (2/2) reached; item forced to PROBING or STANDBY |
+| `FRAGILITY` | Score is within 5 points of an impact threshold (FULL profile), or Raw is on a boundary (DIY profile) |
+| `BLOCKED_EXTERNAL` | External reality required to proceed; item parked STANDBY |
+| `EXTERNAL_DATA_REQUIRED` | External data required but `AskUser=OFF`; item parked STANDBY |
+| `CLOSE_BLOCKED_REAL_ONLY` | `ClosePolicy=REAL_ONLY` but no real evidence provided; item parks STANDBY |
+| `CIRCULAR_DEPENDENCY` | Dependency cycle detected among batch items; all cycle members park STANDBY |
+| `DUPLICATE_ID_REJECTED` | Duplicate item id in same batch; second occurrence DISCARDED |
+| `REDESIGN_TRIGGER` | Probe harness needs redesign — near-miss loop, inconclusive stall, or constraint-signature mismatch |
+| `PROBE_STALL_CONTEXT_MATCH` | `context_match` failed for 2 consecutive INCONCLUSIVE probes on the same driver |
+| `INVALID_DELTA` | DELTA missing causal reference; item state unchanged |
+| `REOPEN_BLOCKED_BUDGET` | Reopen budget (1 per item id) already exhausted |
+| `REOPEN_BLOCKED_NO_DELTA` | Missing `<<<NEW_EVIDENCE>>>` or `<<<CHANGE>>>` needed to reopen a CLOSED item |
+| `MISSING_SOURCE_INPUT` | A claim or step depends on a missing, identifiable artifact, diff, hash, or source block |
+| `CONFIDENCE_CAP_APPLIED` | Declared confidence exceeded the allowed cap; confidence downgraded |
+| `DEPENDENCY_BLOCK` | Unresolved `depends_on` dependency or resource overload |
+| `MULTI_CRITICAL_DRIVER_SPLIT` | Two independent HIGH-impact drivers found; original item DISCARDED and split into two new items |
+
+---
+
+## Missing Source Behavior
+
+When a claim or step depends on a missing but identifiable source (an artifact text, diff body, commit hash, file target, or referenced source block), the kernel sets `required_source_missing=YES` and follows exactly one of these paths:
+
+- **(A) Acquire:** If the source is identifiable and can be retrieved by one bounded step, the item stays `ACTIVE` or `PROBING` with `trigger=MISSING_SOURCE_INPUT` and an acquisition step as Step 1. The step must declare the exact requested source, explicit output, a timebox, and `fail_if=source_not_obtained`.
+- **(B) Park:** If the source is not identifiable or no bounded acquisition path exists, the item moves to `STANDBY` with `trigger=MISSING_SOURCE_INPUT`.
+- **(C) Discard:** Only if an existing higher-priority rule already forces `DISCARD`.
+
+<Warning>
+The kernel must **never** reconstruct missing text, infer a diff body, fabricate a hash, invent a file target, or reproduce a source block from prose. If the source is missing, it must be acquired or the item must park. Fabrication is a violation of the missing-source rule regardless of how plausible the reconstruction seems.
+</Warning>
+
+---
+
+## Step 1 Priority Rules
+
+When multiple conditions compete for Step 1, the kernel selects the highest-priority applicable condition:
+
+1. **Reopen mitigation (REAL-closed):** If `<<<PREV>>>` exists and the previous closure was `ct=REAL`, Step 1 is a mitigation/compensation step addressing real-world consequences (rollback, containment, compensation).
+2. **Circular dependency redesign:** If `trigger=CIRCULAR_DEPENDENCY`, Step 1 breaks the cycle by splitting, removing/replacing a `depends_on` edge, waiving a dependency, or discarding a dominated item.
+3. **Reality Probe / probe harness redesign:** If `new_state=PROBING`, Step 1 is a probe or data acquisition step targeting the critical driver — unless the probe harness is invalid or stalled, in which case Step 1 redesigns the harness.
+4. **Dependency / resource / source block:** If `depends_on` has unresolved items, resource overload exists, or `required_source_missing=YES`, Step 1 resolves the block.
+5. **Conservation redesign:** If timebox budget or complexity budget is exceeded with `impact != LOW`, Step 1 brings the plan within budgets.
+
+Any lower-priority Step 1 requirements that remain unmet are placed at the earliest non-conflicting position in subsequent steps.

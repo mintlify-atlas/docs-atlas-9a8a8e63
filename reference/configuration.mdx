@@ -1,0 +1,141 @@
+---
+title: "PA_PVP Configuration: Operating Profile and Policy Switches"
+sidebarTitle: "Configuration"
+description: "PA_PVP's operating profile is configured through batch header fields and kernel switches — covering execution capability, close policy, ask-user behavior, and output verbosity."
+---
+
+PA_PVP has a small set of configuration switches that control its operating profile. These can be set in the batch header (for a single run) or by editing the canonical kernel file (for permanent changes). The batch header takes effect immediately for that run only; edits to the canonical file become the new default for every subsequent use.
+
+---
+
+## Default Operating Profile
+
+Unless the kernel is edited, the default profile is:
+
+```text
+ExecCapability=NO_RUNTIME
+ClosePolicy=SIM_OK
+AskUser=OFF
+CopyPasteMode=NO_LOOK
+```
+
+- **`ExecCapability=NO_RUNTIME`** — The protocol does not assume real execution capability. Steps are planned but not automatically executed. Completed steps are marked `COMPLETED_SIMULATED` with `evidence_tier=SIMULATED` or `DERIVED`. Use `RUNTIME_OK` only when the AI host has genuine tool access and real execution should be attempted.
+
+- **`ClosePolicy=SIM_OK`** — Simulated closure is allowed, but must be labeled as `SIMULATED` with confidence caps applied. The closure tier is `ct=SIM`. Use `REAL_ONLY` for irreversible or high-stakes decisions where a simulated close is not acceptable.
+
+- **`AskUser=OFF`** — Missing evidence is handled through internal simulation, probing, parking in `STANDBY`, or discarding. The protocol does not ask the operator for input. Set to `ON` only when a single minimal human evidence request is genuinely needed and the item is externally blocked.
+
+- **`CopyPasteMode=NO_LOOK`** — A complete prior output can be pasted back as `SNAPSHOT_AS_INPUT` without manual extraction or editing. No-look means the operator does not need to cut anything from the previous output to resume.
+
+---
+
+## AskUser Switch
+
+The `AskUser` switch controls whether the kernel is allowed to emit an evidence request directed at the operator.
+
+| Switch value | `AskUserMode` | Behavior |
+|---|---|---|
+| `AskUser=OFF` | `NONE` | All evidence gaps resolved internally via simulation, probing, parking, or discarding |
+| `AskUser=ON` | `ALLOW` | One minimal operator-facing evidence request is allowed per output, subject to eligibility |
+
+### Eligibility for an AskUser question
+
+**All** of the following conditions must hold for an item to be eligible:
+
+1. `AskUserMode=ALLOW`
+2. `term=N` (item is not terminal)
+3. `trigger` is in the external block lock set: `BLOCKED_EXTERNAL`, `EXTERNAL_DATA_REQUIRED`, or `CLOSE_BLOCKED_REAL_ONLY`
+4. At least one of: `ClosePolicy=REAL_ONLY`, `reversibility=IRREVERSIBLE`, or `spent_internal=YES`
+
+`spent_internal=YES` is derived when `pc >= 1`, `nm >= 2`, or `inc >= 1` for the current critical driver — meaning the kernel has already expended internal probe cycles without resolution.
+
+### Selection when multiple items are eligible
+
+At most one question per output is emitted. When multiple items are eligible, the kernel selects by:
+
+1. Highest impact (HIGH → MED → LOW)
+2. Highest urgency (HIGH → MED → LOW)
+3. Id lexical order (stable tie-break)
+
+The selected item's evidence request appears in `[PANEL]` as:
+
+```text
+AskUser: <id>: <one minimal evidence request>
+```
+
+All other items receive `AskUser: NONE`.
+
+<Warning>
+`AskUser=ON` should only be set when a single minimal human evidence request is genuinely needed. Even with `ON`, questions are emitted only for eligible items. Setting `AskUser=ON` does not bypass eligibility rules — it only permits the kernel to ask when all conditions are satisfied. Eligible items must still have an active external block trigger and a reversibility or evidence-tier constraint.
+</Warning>
+
+---
+
+## ClosePolicy
+
+| Value | Behavior |
+|---|---|
+| `SIM_OK` (default) | Simulated closure is legal when labeled and confidence caps are applied. `ct=SIM` in `[QUEUE]`. |
+| `REAL_ONLY` | Closure requires `<<<NEW_EVIDENCE evidence_tier=HISTORICAL\|REAL\|EXPERIMENT>>>`. Without it, the item parks in `STANDBY` with `trigger=CLOSE_BLOCKED_REAL_ONLY`. |
+
+`ClosePolicy=REAL_ONLY` is appropriate for decisions that are irreversible, high-stakes, or legally/financially consequential where a simulated close creates unacceptable downstream risk. When set at the batch level, it applies to all items unless overridden individually by `reversibility=IRREVERSIBLE` (which always enforces REAL-only closure regardless of batch policy).
+
+Set per-batch via:
+
+```text
+<<<B close_policy=REAL_ONLY>>>
+```
+
+---
+
+## ssot_scale
+
+| Value | Behavior |
+|---|---|
+| `MIN` (default) | Minimal item structure for items without `<<<PREV>>>`. Items where `contested=YES` or `dominant_gate != NONE` automatically escalate to full DEBUG structure. |
+| `DEBUG` | Full item structure for all items regardless of previous state or gate activity. |
+
+`MIN` is the right default for most workflows — it keeps output compact and focuses detail on items that actually need governance attention. Use `DEBUG` when you want the full decision model, evidence binding, and data acquisition blocks for every item, regardless of whether they triggered a gate.
+
+Set per-batch via:
+
+```text
+<<<B ssot_scale=DEBUG>>>
+```
+
+<Tip>
+Under `ssot_scale=MIN`, a low-impact DIY item uses the minimum surface (only `[ITEM_PANEL]`, `[DERIVED]`, `[STEPS]`, `[NEXT]`). The same item would receive full debug structure if `contested=YES` or a gate fires. This means output size is state-dependent, not merely prompt-dependent.
+</Tip>
+
+---
+
+## Editing the Kernel
+
+The canonical kernel file (`PA_PVP_full_v9.9.0_canonical.txt`) is a behavioral contract. Changes to it alter PA_PVP's default behavior for every subsequent use. The file is designed to be edited, but edits that break output invariants or introduce vague branches will degrade reliability.
+
+<Warning>
+When editing the canonical kernel, follow these practices to preserve correctness and machine-consumability:
+
+- **Keep execution rules inside the canonical kernel.** Keep adoption guidance, examples, and explanations in the README or separate documentation.
+- **Preserve exact output invariants** when they are part of machine consumption — field names, block order, token vocabulary. Changing these breaks `SNAPSHOT_AS_INPUT` and downstream consumers.
+- **Prefer deterministic branches over vague advice.** Every conditional in the kernel should have an exact trigger condition and an exact outcome. Phrases like "may" or "consider" create non-deterministic behavior.
+- **Keep missing-source behavior non-fabricating.** The rule against reconstructing missing text, diffs, hashes, or source blocks must be preserved. Relaxing it would allow the kernel to fabricate state.
+- **Keep AskUser controlled by its switch and eligibility gate.** Do not add paths that emit AskUser questions outside the eligibility rules — this would make the protocol intrusive by default.
+- **Preserve snapshot-as-input and delta-only continuation.** These are the core ergonomic features of PA_PVP. Changes that break PREV recovery or SNAPSHOT_AS_INPUT routing will degrade the copy-paste workflow.
+- **Verify changes against complete, incomplete, conflicting, and previous-state inputs.** Test the edited kernel against all four input shapes before deploying it.
+</Warning>
+
+---
+
+## Contract Bridge Fields
+
+These fields govern which contract is authoritative for a given run. They appear in `[PANEL]` and are set to PA_PVP defaults unless overridden.
+
+| Field | Default | Description |
+|---|---|---|
+| `interaction_ssot` | `PA_PVP` | Contract governing interaction-level behavior |
+| `decision_ssot` | `PA_PVP` | Contract governing decision-kernel semantics |
+| `ExecCapability` | `NO_RUNTIME` | Set per-batch via `<<<B exec_capability=...>>>` |
+| `ClosePolicy` | `SIM_OK` | Set per-batch via `<<<B close_policy=...>>>` |
+
+If contracts conflict (e.g., an external safety layer vs. the PA_PVP output contract), the PA_PVP contract controls output format and decision semantics; external safety or prohibition constraints stop the run.

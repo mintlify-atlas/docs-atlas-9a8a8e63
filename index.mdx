@@ -1,20 +1,88 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "PA_PVP: Adversarial Decision Protocol for AI Systems"
+sidebarTitle: "Home"
+description: "PA_PVP converts uncertain plans, artifacts, and choices into a forced verdict, one executable next action, and reusable machine state — in a single copy/paste."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+PA_PVP is a copy/paste decision protocol for AI systems. Give it a plan to pressure-test, an artifact to audit, or a choice to close — it returns a forced verdict (`DO NOW`, `DO LATER`, or `DISCARD`), one concrete next action, and a machine-readable snapshot you can feed back into the next run. No "it depends." No vague steps. Just an operational decision.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Load the protocol and get your first verdict in 60 seconds
+  </Card>
+  <Card title="When to Use PA_PVP" icon="crosshairs" href="/when-to-use">
+    Learn which decision types PA_PVP handles best
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/verdicts-and-lifecycle">
+    Understand verdicts, lifecycle states, and the output contract
+  </Card>
+  <Card title="Input Syntax" icon="code" href="/reference/input-syntax">
+    Full reference for all wrappers, modes, and batch headers
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## What PA_PVP does
+
+PA_PVP is a text-based execution contract — a system prompt you load into any LLM that supports instruction following. It applies a deterministic decision kernel to whatever you feed it.
+
+For each item, the protocol:
+
+1. Identifies the real decision or artifact under review
+2. Exposes the highest-impact weakness or uncertainty
+3. Assigns a verdict — `DO NOW`, `DO LATER`, or `DISCARD`
+4. Produces executable or measurable next steps
+5. Binds every claim to available evidence
+6. Selects exactly one `[NEXT]` action
+7. Preserves enough state for the next run
+
+The result is a single machine-readable code block starting with `STATE: DECISION.TEST.FINAL`, followed by a human-readable table. Paste the entire output back as input to continue where you left off — no manual extraction required.
+
+## Key capabilities
+
+<CardGroup cols={3}>
+  <Card title="Forced Verdicts" icon="gavel">
+    Every item gets `DO NOW`, `DO LATER`, or `DISCARD`. The protocol never returns "depends."
+  </Card>
+  <Card title="Snapshot Continuity" icon="rotate">
+    Paste any prior output back as input. The kernel auto-recovers item state for delta-only continuation.
+  </Card>
+  <Card title="Reality Probes" icon="flask">
+    Low-confidence drivers trigger observable probes with kill switches and representativeness checks.
+  </Card>
+  <Card title="Falsification Debt" icon="triangle-exclamation">
+    Unresolved critical drivers are tracked explicitly as open debt — no hidden assumptions.
+  </Card>
+  <Card title="Batch & Dependencies" icon="diagram-project">
+    Process multiple items at once with declared dependencies, resource pools, and concurrency rules.
+  </Card>
+  <Card title="AI-to-AI Ping-Pong" icon="arrows-left-right">
+    Delta-only peer validation lets two AI instances iterate on a decision with one BREAK and one PATCH per round.
+  </Card>
+</CardGroup>
+
+## Get started
+
+<Steps>
+  <Step title="Load the canonical protocol">
+    Open [`PA_PVP_full_v9.9.0_canonical.txt`](https://github.com/xxyoudeadpunkxx/pa_pvp-a-plutonium-like-adversarial-peer-validation-protocol/blob/main/PA_PVP_full_v9.9.0_canonical.txt) and provide it to your AI system as a system prompt or context file.
+  </Step>
+  <Step title="Activate the protocol">
+    Tell the AI to use PA_PVP as the active decision protocol:
+    ```text
+    Use PA_PVP as the active decision protocol for the next input. Follow its output contract exactly.
+    ```
+  </Step>
+  <Step title="Describe your situation">
+    Paste your plan, artifact, or decision in plain language. The protocol handles the rest.
+    ```text
+    This implementation plan looks plausible, but I'm not sure the dependencies and rollback path are strong enough. Use PA_PVP to pressure-test it and give me the next action.
+    ```
+  </Step>
+  <Step title="Read the result and continue">
+    The response contains a machine-readable code block and a human-readable table. To continue, paste the entire output back as input — no editing required.
+  </Step>
+</Steps>
+
+<Note>
+PA_PVP is a text protocol, not a software runtime. It structures decisions, simulations, evidence requests, probes, and next steps. Real execution depends on the AI host, available tools, and external systems.
+</Note>
