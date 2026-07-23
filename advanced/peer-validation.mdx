@@ -1,7 +1,7 @@
 ---
 title: "AI-to-AI Peer Validation with Delta-Only Ping-Pong"
 sidebarTitle: "Peer Validation"
-description: "PA_PVP supports adversarial AI-to-AI validation through delta-only ping-pong: each iteration targets the single highest-impact weakness with one BREAK and one PATCH."
+description: "PA_PVP adversarial peer validation uses delta-only ping-pong: one BREAK targets the highest-impact driver; one PATCH applies the minimal fix per iteration."
 ---
 
 PA_PVP includes a built-in peer validation protocol for AI-to-AI adversarial review. When previous state exists — whether provided through `<<<PREV>>>` or recovered from a pasted snapshot — each peer produces **delta-only output**: one `[BREAK]` identifying what is wrong and one `[PATCH]` applying the minimal fix. This keeps iterations focused and prevents redundant full-output regeneration. Each ping-pong pass advances the decision by addressing the single highest-impact weakness first, making the validation process both efficient and auditable.

@@ -1,5 +1,5 @@
 ---
-title: "PA_PVP: Adversarial Peer Validation Protocol"
+title: "PA_PVP: Copy/Paste Adversarial Peer Validation Protocol"
 sidebarTitle: "Introduction"
 description: "PA_PVP is a copy/paste AI decision protocol that forces a verdict on every uncertain plan, artifact, or choice — and gives you one concrete next action."
 ---
@@ -12,13 +12,15 @@ Doubt is a state transition, not a blocker. When uncertainty is present, PA_PVP 
 
 ## What PA_PVP accepts
 
-PA_PVP is designed to handle five classes of input:
+PA_PVP is designed to handle five classes of input, each mapped to a formal input mode:
 
-- **A plan to pressure-test** — bullet lists, numbered steps, or an implementation plan you want evaluated for weaknesses before execution.
-- **An artifact to audit** — a prompt, document, protocol, code sample, specification, or any other artifact that needs adversarial review.
-- **A decision with competing options** — two or more viable paths where you need a verdict or the smallest probe required to break the tie.
-- **A target plus an evaluation method** — a named framework, checklist, or standard applied to a specific artifact (`TOOL + TARGET` mode).
+- **A plan to pressure-test** (`PLAN` mode) — bullet lists, numbered steps, or an implementation plan you want evaluated for weaknesses before execution.
+- **An artifact to audit** (`ARTIFACT` mode) — a prompt, document, protocol, code sample, specification, or any other artifact that needs adversarial review.
+- **A decision with competing options** — two or more viable paths where you need a verdict or the smallest probe required to break the tie. Use `PLAN` mode with the options as steps.
+- **A target plus an evaluation method** (`TOOL+TARGET` mode) — a named framework, checklist, or standard applied to a specific artifact.
 - **A previous PA_PVP snapshot to continue** — paste the entire prior output and the kernel auto-recovers item state for delta-only continuation, with no manual editing required.
+
+For a first run, plain language is enough — the kernel routes to the appropriate mode automatically. Use the formal wrappers (`<<<PLAN>>>`, `<<<ARTIFACT>>>`, `<<<TOOL>>>` / `<<<TARGET>>>`) when you need deterministic batching, explicit mode assignment, or machine-to-machine exchange.
 
 ## What PA_PVP returns
 
@@ -40,6 +42,10 @@ The machine snapshot is the source of truth. The human table is a read-only deri
 **Executable steps.** Every step follows the grammar `OBSERVABLE_VERB OBJECT -> OUTPUT | timebox<=Nm | fail_if=OBSERVABLE_CONDITION`. Steps must be measurable or observable, not vague intentions. The `[NEXT]` action always matches an emitted step — it cannot introduce a new action.
 
 **Evidence binding.** Claims are tied to evidence tiers: simulated, derived, historical, real, or experimental. When evidence is weak, the protocol labels the limitation rather than hiding it. Simulated closures are allowed by default (`ClosePolicy=SIM_OK`) but must be explicitly labeled with confidence caps applied.
+
+**Reality probes and falsification debt.** When a critical driver has low confidence, PA_PVP can move the item into `PROBING` state and declare a reality probe — a bounded, measurable test with a kill switch and a representativeness check. If the probe falsifies the critical driver, the verdict becomes `DISCARD`. Unresolved critical drivers that remain active without sufficient evidence accumulate as falsification debt, capped at two open drivers to prevent unbounded uncertainty stacking.
+
+**Batch processing.** Multiple items can be submitted in a single run using a batch header (`<<<B ...>>>`) and individual item wrappers (`<<<I id=E1 ...>>>`). The batch enforces coverage: every submitted item must appear in `[QUEUE]` and emit an `[ITEM id=...]` block. Missing items make the output `INVALID`.
 
 **Snapshot continuity.** The machine state block is designed for copy/paste reuse. `CopyPasteMode=NO_LOOK` means you paste the entire prior output back as input — no manual cutting or extraction required. The kernel auto-recovers item state from the snapshot.
 

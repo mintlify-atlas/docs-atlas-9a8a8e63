@@ -1,7 +1,7 @@
 ---
 title: "Batch Processing, Dependencies, and Resource Concurrency"
 sidebarTitle: "Batch & Dependencies"
-description: "PA_PVP processes multiple decision items in a single batch, with declared dependencies, resource pools, and deterministic concurrency rules for scheduling conflicts."
+description: "Multi-item PA_PVP batches declare dependencies, resource usage, and concurrency rules. Coverage gaps mark the entire output INVALID with BATCH_COVERAGE."
 ---
 
 PA_PVP supports multi-item batches where each item carries its own mode, previous state, evidence, and dependency declarations. The batch header sets shared policy for the entire run; individual items can override specific fields. Each item is processed independently within the batch, but dependency and resource declarations create cross-item relationships that the kernel resolves deterministically — without asking for operator input when conflicts arise.

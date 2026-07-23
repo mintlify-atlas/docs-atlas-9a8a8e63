@@ -1,7 +1,7 @@
 ---
-title: "Reality Probes and Falsification in PA_PVP"
+title: "Reality Probes, Kill Switches, and Falsification in PA_PVP"
 sidebarTitle: "Probes & Falsification"
-description: "PA_PVP triggers reality probes when critical driver confidence is low — observable, time-boxed experiments with kill switches that can validate or falsify a decision."
+description: "Reality probes in PA_PVP test critical drivers via kill switches and representativeness checks. A falsified HIGH-repr probe forces DISCARD in the same run."
 ---
 
 When a critical driver has low confidence, PA_PVP does not proceed on assumptions — it moves the item into **PROBING** state and requires an observable reality probe before the decision can be closed. A probe is an adversarially designed experiment whose sole job is to falsify the critical driver. If the probe confirms the driver, confidence rises. If it falsifies it, the verdict is immediately forced to DISCARD. This mechanism is PA_PVP's primary defense against simulation-backed overconfidence: decisions cannot close as VALIDATED unless the evidence behind their critical driver has been genuinely tested.

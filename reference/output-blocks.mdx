@@ -1,7 +1,7 @@
 ---
 title: "PA_PVP Output Blocks: PANEL, QUEUE, ITEM, and Tables"
 sidebarTitle: "Output Blocks"
-description: "Reference for every block in a PA_PVP machine output: [USER_PANEL], [PANEL], [QUEUE], [ITEM id=...], [HUMAN_TABLE], and optional derived tables."
+description: "Reference for every PA_PVP output block: USER_PANEL, PANEL, QUEUE, ITEM, HUMAN_TABLE, and optional derived tables — with all fields and derivation rules."
 ---
 
 Every valid PA_PVP decision run emits exactly one machine code block containing these blocks in a fixed order, followed by derived human-readable tables outside the code block. The code block is the reusable machine state; the tables are derived views only. If the `STATE: DECISION.TEST.FINAL` header is missing from the code block, or if `[PANEL]` contains `OutputValidity: INVALID`, the output is non-operational and must not be reused as machine state.
@@ -48,6 +48,8 @@ Global batch metadata for the run. Required in every output.
 |---|---|---|
 | `Protocol` | `PA_PVP` | `PA_PVP` |
 | `SSOT_STATUS` | Compact active-module manifest (see below) | — |
+| `interaction_ssot` | `PA_PVP` \| `ADAM` \| `NONE` | `PA_PVP` |
+| `decision_ssot` | `PA_PVP` \| `ADAM` \| `NONE` | `PA_PVP` |
 | `ExecCapability` | `NO_RUNTIME` \| `RUNTIME_OK` | `NO_RUNTIME` |
 | `ClosePolicy` | `SIM_OK` \| `REAL_ONLY` | `SIM_OK` |
 | `SSOTScale` | `MIN` \| `DEBUG` | `MIN` |

@@ -1,7 +1,7 @@
 ---
 title: "PA_PVP Configuration: Operating Profile and Policy Switches"
 sidebarTitle: "Configuration"
-description: "PA_PVP's operating profile is configured through batch header fields and kernel switches — covering execution capability, close policy, ask-user behavior, and output verbosity."
+description: "PA_PVP operating profile: default settings, AskUser eligibility rules, ClosePolicy, ssot_scale behavior, contract bridge fields, and kernel editing rules."
 ---
 
 PA_PVP has a small set of configuration switches that control its operating profile. These can be set in the batch header (for a single run) or by editing the canonical kernel file (for permanent changes). The batch header takes effect immediately for that run only; edits to the canonical file become the new default for every subsequent use.
@@ -133,9 +133,7 @@ These fields govern which contract is authoritative for a given run. They appear
 
 | Field | Default | Description |
 |---|---|---|
-| `interaction_ssot` | `PA_PVP` | Contract governing interaction-level behavior |
-| `decision_ssot` | `PA_PVP` | Contract governing decision-kernel semantics |
-| `ExecCapability` | `NO_RUNTIME` | Set per-batch via `<<<B exec_capability=...>>>` |
-| `ClosePolicy` | `SIM_OK` | Set per-batch via `<<<B close_policy=...>>>` |
+| `interaction_ssot` | `PA_PVP` | Contract governing interaction-level behavior (allowed values: `PA_PVP` \| `ADAM` \| `NONE`) |
+| `decision_ssot` | `PA_PVP` | Contract governing decision-kernel semantics (allowed values: `PA_PVP` \| `ADAM` \| `NONE`) |
 
 If contracts conflict (e.g., an external safety layer vs. the PA_PVP output contract), the PA_PVP contract controls output format and decision semantics; external safety or prohibition constraints stop the run.

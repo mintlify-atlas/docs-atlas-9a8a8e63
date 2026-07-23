@@ -1,7 +1,7 @@
 ---
 title: "Falsification Debt: Tracking Unresolved Critical Drivers"
 sidebarTitle: "Falsification Debt"
-description: "Falsification Debt records critical decision drivers that remain active without sufficient evidence. PA_PVP limits active debt to two critical drivers per item."
+description: "Falsification Debt in PA_PVP tracks unprotected critical drivers. Capped at two; a third triggers DEBT_CEILING and blocks the item from a DO NOW verdict."
 ---
 
 Falsification Debt is PA_PVP's explicit accounting for uncertainty. When a decision proceeds on a critical driver that hasn't been validated by real evidence, debt is opened — and tracked in every subsequent run. Unlike a soft warning, debt actively shapes routing: it caps confidence, forces the item into SLOW execution mode, and appears in both `[HUMAN_TABLE_OPS]` and `[RISK_DASHBOARD]` so operators can see exactly which drivers are unsupported. Debt is not a signal that something went wrong; it is a signal that a decision is being carried forward on an explicitly acknowledged gap.
@@ -14,7 +14,7 @@ Falsification Debt is PA_PVP's explicit accounting for uncertainty. When a decis
   - A dependency is explicitly **waived** while that dependency is not CLOSED or DISCARDED
   - A probe is adopted at **MED representativeness** — MED representativeness does not protect from debt
   - A probe **expires** without renewal — an expired probe no longer protects the driver it covered
-  - A PROBING item proceeds under `ClosePolicy=SIM_OK` with SIMULATED evidence
+  - A probe is **contested** (`contested=YES`) — contestation forces `representativeness=MED`, which provides no debt protection until the contestation is resolved
   - A **Hedge Action** is active — a parallel probe is required, and debt is declared alongside it
 </Note>
 

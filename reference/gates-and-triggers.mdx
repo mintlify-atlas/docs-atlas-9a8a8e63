@@ -1,7 +1,7 @@
 ---
-title: "PA_PVP Gates and Triggers: Routing and Governance"
+title: "PA_PVP Gates and Triggers: Decision Routing and Governance"
 sidebarTitle: "Gates & Triggers"
-description: "Reference for all PA_PVP dominant gates and triggers — the governance signals that route items through probing, debt tracking, redesign, and discard paths."
+description: "Reference for all 10 PA_PVP dominant gates in precedence order, all 17 trigger values, missing source behavior, and Step 1 priority rules."
 ---
 
 Gates and triggers are the governance signals in PA_PVP's decision kernel. Each item derives exactly one `dominant_gate` — the highest-priority condition active in that run. Triggers explain why an item is in its current state. The gate is diagnostic and routing-oriented; it must not invent semantics beyond the kernel rules. `dominant_gate` appears in `[ITEM_PANEL]` and is mirrored in the `[QUEUE]` `gate` column.
